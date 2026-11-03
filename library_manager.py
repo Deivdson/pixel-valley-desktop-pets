@@ -1,6 +1,6 @@
 """
 Gerenciador da Biblioteca de Avatares (persistência local de bonequinhos,
-retratos, fotos de origem e exportação de Sprite Sheets).
+retratos, fotos de origem, sprites livres geradas por IA/Foto e exportação).
 """
 
 import os
@@ -24,11 +24,13 @@ class AvatarRecord:
         config: AvatarConfig,
         folder_path: str,
         has_photo_portrait: bool = False,
+        is_freeform_sprite: bool = False,
     ):
         self.avatar_id = avatar_id
         self.config = config
         self.folder_path = folder_path
         self.has_photo_portrait = has_photo_portrait
+        self.is_freeform_sprite = is_freeform_sprite
 
     @property
     def spritesheet_path(self) -> str:
@@ -70,7 +72,6 @@ class AvatarLibrary:
         self._ensure_starter_avatars()
 
     def _ensure_starter_avatars(self):
-        """Cria avatares iniciais de demonstração caso a biblioteca esteja vazia."""
         existing = [
             d for d in os.listdir(self.avatars_dir)
             if os.path.isdir(os.path.join(self.avatars_dir, d))
@@ -144,9 +145,10 @@ class AvatarLibrary:
             self.save_avatar(cfg)
 
     def regenerate_all_sprites(self):
-        """Regenera todas as sprites e retratos modulares da biblioteca com o renderizador oficial."""
+        """Regenera apenas os avatares baseados em camadas, preservando os gerados livremente por IA/Foto."""
         for rec in self.list_avatars():
-            self.save_avatar(rec.config, avatar_id=rec.avatar_id)
+            if not rec.is_freeform_sprite:
+                self.save_avatar(rec.config, avatar_id=rec.avatar_id)
 
     def list_avatars(self) -> List[AvatarRecord]:
         records: List[AvatarRecord] = []
@@ -162,11 +164,13 @@ class AvatarLibrary:
                         data = json.load(f)
                     cfg = AvatarConfig.from_dict(data.get("config", {}))
                     has_photo = bool(data.get("has_photo_portrait", False))
+                    is_freeform = bool(data.get("is_freeform_sprite", False))
                     records.append(AvatarRecord(
                         avatar_id=data.get("id", entry),
                         config=cfg,
                         folder_path=folder,
                         has_photo_portrait=has_photo,
+                        is_freeform_sprite=is_freeform,
                     ))
                 except Exception:
                     continue
@@ -178,6 +182,7 @@ class AvatarLibrary:
         photo_portrait: Optional[Image.Image] = None,
         source_photo_path: Optional[str] = None,
         avatar_id: Optional[str] = None,
+        custom_spritesheet: Optional[Image.Image] = None,
     ) -> AvatarRecord:
         if not avatar_id:
             avatar_id = str(uuid.uuid4())[:8]
@@ -185,10 +190,17 @@ class AvatarLibrary:
         folder = os.path.join(self.avatars_dir, avatar_id)
         os.makedirs(folder, exist_ok=True)
 
-        sheet = generate_full_spritesheet(config)
+        is_freeform = custom_spritesheet is not None
+        if custom_spritesheet is not None:
+            sheet = custom_spritesheet
+        else:
+            sheet = generate_full_spritesheet(config)
         sheet.save(os.path.join(folder, "spritesheet.png"))
 
+        # Gerar retrato a partir do busto real da sheet
+        bust = sheet.crop((4, 2, 20, 20)).resize((56, 56), Image.Resampling.NEAREST)
         mod_portrait = generate_modular_portrait(config)
+        mod_portrait.paste(bust, (4, 4), bust)
         mod_portrait.save(os.path.join(folder, "portrait.png"))
 
         has_photo = False
@@ -209,7 +221,8 @@ class AvatarLibrary:
             "id": avatar_id,
             "config": config.to_dict(),
             "has_photo_portrait": has_photo,
-            "format": "stardew-desktop-pet-v2-vanilla-layers",
+            "is_freeform_sprite": is_freeform,
+            "format": "stardew-desktop-pet-v3-freeform-llm",
             "cell_width": 24,
             "cell_height": 36,
             "columns": 4,
@@ -218,7 +231,13 @@ class AvatarLibrary:
         with open(os.path.join(folder, "avatar.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
-        return AvatarRecord(avatar_id, config, folder, has_photo_portrait=has_photo)
+        return AvatarRecord(
+            avatar_id,
+            config,
+            folder,
+            has_photo_portrait=has_photo,
+            is_freeform_sprite=is_freeform,
+        )
 
     def delete_avatar(self, avatar_id: str) -> bool:
         folder = os.path.join(self.avatars_dir, avatar_id)
