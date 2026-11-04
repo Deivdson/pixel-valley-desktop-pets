@@ -1,8 +1,8 @@
 {
-  "id": "4d3dc625",
+  "id": "a0609d09",
   "config": {
-    "name": "Luzia",
-    "is_male": true,
+    "name": "Avatar Gemini gsu2",
+    "is_male": false,
     "skin_index": 0,
     "skin_color": "#F9AE89",
     "hair_index": 0,
@@ -20,7 +20,8 @@
     "hat_style": "nenhum",
     "scale": 4
   },
-  "has_photo_portrait": false,
+  "has_photo_portrait": true,
+  "has_dialog_portrait": true,
   "is_freeform_sprite": true,
   "format": "stardew-desktop-pet-v3-freeform-llm",
   "cell_width": 24,

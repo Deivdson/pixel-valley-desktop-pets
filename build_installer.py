@@ -27,6 +27,7 @@ CODE_FILES = [
     "app.py",
     "desktop_pet.py",
     "dialogue_box.py",
+    "gpt_luna.py",
     "library_manager.py",
     "llm_sprite_designer.py",
     "photo_analyzer.py",

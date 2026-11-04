@@ -1,0 +1,18 @@
+{
+  "hearts": 8,
+  "max_hearts": 10,
+  "talks_count": 3,
+  "gifts_count": 1,
+  "custom_lines": [],
+  "persona_bio": "",
+  "history": [
+    {
+      "user": "Olá",
+      "npc": "Olá! Que bom te ver"
+    },
+    {
+      "user": "diga x",
+      "npc": "X! Hehe, você está test"
+    }
+  ]
+}

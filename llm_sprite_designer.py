@@ -37,6 +37,15 @@ DEFAULT_LLM_SETTINGS = {
     "model": "gemini-2.5-flash",
     "ollama_url": "http://localhost:11434",
     "custom_prompt_notes": "",
+    # Configurações da Integração de Personalidade GPT Luna
+    "luna_enabled": True,
+    "luna_provider": "auto",   # "auto", "openai_luna", "gemini_luna", "ollama_luna", "custom_endpoint", "local_luna"
+    "luna_model": "gpt-6-luna",
+    "luna_api_key": "",
+    "luna_endpoint": "https://api.openai.com/v1/chat/completions",
+    "luna_mood": "Luna Clássica (Carismática, Espirituosa & Companheira)",
+    "luna_autonomous_speech": True,
+    "luna_custom_instructions": "",
 }
 
 
@@ -54,6 +63,12 @@ def load_llm_settings() -> Dict[str, Any]:
         settings["api_key"] = (
             os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or ""
+        )
+    if not settings.get("luna_api_key"):
+        settings["luna_api_key"] = (
+            os.environ.get("LUNA_API_KEY")
             or os.environ.get("OPENAI_API_KEY")
             or ""
         )

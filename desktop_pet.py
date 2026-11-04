@@ -11,6 +11,13 @@ from typing import Dict, List, Optional, Callable
 from PIL import Image, ImageTk
 from library_manager import AvatarRecord
 from dialogue_box import StardewDialogueWindow
+from gpt_luna import (
+    is_gpt_luna_enabled,
+    set_gpt_luna_enabled,
+    get_gpt_luna_desktop_bubble,
+    open_gpt_luna_settings_modal,
+)
+from llm_sprite_designer import load_llm_settings
 from sprite_generator import (
     extract_animation_frames,
     ANIMATION_ROWS,
@@ -206,6 +213,15 @@ class DesktopPetWindow:
             label="🔄 Recarregar Sprite / Atualizar Pet",
             command=self.reload_self_from_disk,
         )
+        self.menu.add_separator()
+        self.menu.add_command(
+            label="🌙 Alternar Personalidade GPT Luna (ON/OFF)",
+            command=self.toggle_gpt_luna_personality,
+        )
+        self.menu.add_command(
+            label="⚙️ Configurar Personalidade GPT Luna...",
+            command=lambda: open_gpt_luna_settings_modal(self.master),
+        )
         if self.on_open_guide_callback:
             self.menu.add_command(
                 label="📖 Guia & Prompts Gemini (Criar Skins/Diálogos)",
@@ -213,6 +229,15 @@ class DesktopPetWindow:
             )
         self.menu.add_separator()
         self.menu.add_command(label="🏠 Recolher para Biblioteca", command=self.close)
+
+    def toggle_gpt_luna_personality(self):
+        new_state = not is_gpt_luna_enabled()
+        set_gpt_luna_enabled(new_state)
+        if new_state:
+            self.set_action("happy_dance", duration_ticks=45)
+            self.show_speech("🌙 GPT Luna Ativado! ✨", duration=45)
+        else:
+            self.show_speech("🌾 Modo Clássico!", duration=35)
 
     def set_scale(self, new_scale: int):
         self.scale = new_scale
@@ -246,7 +271,10 @@ class DesktopPetWindow:
         self.canvas.itemconfigure(self.speech_bg_item, state="normal")
 
     def say_random_quote(self):
-        quote = random.choice(STARDEW_QUOTES)
+        if is_gpt_luna_enabled():
+            quote = get_gpt_luna_desktop_bubble(self.record.config.name, self.current_action)
+        else:
+            quote = random.choice(STARDEW_QUOTES)
         self.show_speech(quote, duration=55)
 
     def set_action(self, action: str, duration_ticks: int = 45):
@@ -279,16 +307,20 @@ class DesktopPetWindow:
         self.set_action(chosen, duration_ticks=dur)
 
         # Chance de mostrar um comentário fofo ao iniciar uma ação especial
-        if random.random() < 0.18:
-            action_comments = {
-                "water_crops": "Regando a plantinha... 🌱",
-                "coffee_break": "Hmm, cafezinho quente! ☕",
-                "fishing": "Paciência de pescador... 🎣",
-                "happy_dance": "Uhul! Dia de festival! 🎉",
-                "sleep_sit": "Só uma sonequinha... 💤",
-            }
-            if chosen in action_comments:
-                self.show_speech(action_comments[chosen], duration=35)
+        if random.random() < 0.22:
+            settings = load_llm_settings()
+            if settings.get("luna_enabled", True) and settings.get("luna_autonomous_speech", True):
+                self.show_speech(get_gpt_luna_desktop_bubble(self.record.config.name, chosen), duration=38)
+            else:
+                action_comments = {
+                    "water_crops": "Regando a plantinha... 🌱",
+                    "coffee_break": "Hmm, cafezinho quente! ☕",
+                    "fishing": "Paciência de pescador... 🎣",
+                    "happy_dance": "Uhul! Dia de festival! 🎉",
+                    "sleep_sit": "Só uma sonequinha... 💤",
+                }
+                if chosen in action_comments:
+                    self.show_speech(action_comments[chosen], duration=35)
 
     def _on_drag_start(self, event):
         self.is_dragging = True

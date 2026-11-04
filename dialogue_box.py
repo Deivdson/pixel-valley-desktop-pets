@@ -17,6 +17,13 @@ import httpx
 
 from library_manager import AvatarRecord
 from llm_sprite_designer import load_llm_settings
+from gpt_luna import (
+    is_gpt_luna_enabled,
+    set_gpt_luna_enabled,
+    generate_gpt_luna_reply,
+    _generate_local_luna_fallback,
+    open_gpt_luna_settings_modal,
+)
 
 
 # Paleta autêntica da Caixa de Diálogo do Stardew Valley
@@ -190,6 +197,12 @@ class StardewDialogueWindow:
         return "deivdson" in self.record.config.name.lower()
 
     def _pick_dialogue(self, topic: str) -> str:
+        if is_gpt_luna_enabled():
+            return _generate_local_luna_fallback(
+                char_name=self.record.config.name,
+                hearts=int(self.state.get("hearts", 6)),
+                topic=topic,
+            )
         custom_list = self.state.get("custom_lines", [])
         if topic == "greeting" and custom_list and random.random() < 0.35:
             return random.choice(custom_list)
@@ -198,6 +211,42 @@ class StardewDialogueWindow:
             return random.choice(pool)
         pool = DEFAULT_DIALOGUES_BY_TOPIC.get(topic, DEFAULT_DIALOGUES_BY_TOPIC["greeting"])
         return random.choice(pool)
+
+    def _toggle_luna_in_dialogue(self):
+        new_state = not is_gpt_luna_enabled()
+        set_gpt_luna_enabled(new_state)
+        self._refresh_luna_badge()
+        if new_state:
+            msg = _generate_local_luna_fallback(
+                char_name=self.record.config.name,
+                hearts=int(self.state.get("hearts", 6)),
+                topic="greeting",
+            )
+            self.set_dialogue_text(msg, trigger_action="happy_dance", short_bubble="🌙 GPT Luna Ativado!")
+        else:
+            self.set_dialogue_text(
+                f"Modo clássico do Vale do Orvalho ativado! Sempre que quiser ligar a personalidade GPT Luna de novo, é só clicar no botão 🌙 acima!",
+                trigger_action="idle",
+                short_bubble="🌾 Modo Clássico!",
+            )
+
+    def _refresh_luna_badge(self):
+        luna_on = is_gpt_luna_enabled()
+        if hasattr(self, "luna_toggle_btn") and self.luna_toggle_btn.winfo_exists():
+            if luna_on:
+                self.luna_toggle_btn.configure(
+                    text="🌙 GPT Luna: ATIVO",
+                    bg="#5C3385",
+                    fg="#FFF5FF",
+                )
+                self.speaker_tag_lbl.configure(text=f"🌙 {self.record.config.name} (Personalidade GPT Luna):")
+            else:
+                self.luna_toggle_btn.configure(
+                    text="🌾 GPT Luna: OFF",
+                    bg="#B89660",
+                    fg=SDV_TEXT_MAIN,
+                )
+                self.speaker_tag_lbl.configure(text=f"🌾 {self.record.config.name} diz:")
 
     def _build_ui(self):
         # Moldura tripla de madeira esculpida típica do Stardew Valley
@@ -227,7 +276,7 @@ class StardewDialogueWindow:
         self.speaker_tag_lbl = tk.Label(
             top_info,
             text=f"🌾 {self.record.config.name} diz:",
-            font=("Georgia", 11, "bold"),
+            font=("Georgia", 10, "bold"),
             bg=SDV_PARCHMENT,
             fg=SDV_TEXT_MUTED,
         )
@@ -235,7 +284,7 @@ class StardewDialogueWindow:
 
         tk.Button(
             top_info,
-            text="🖼️ Trocar Imagem da Caixa de Diálogo",
+            text="🖼️ Trocar Retrato",
             command=self.change_dialogue_portrait_image,
             bg="#D6A868",
             fg=SDV_TEXT_MAIN,
@@ -245,6 +294,34 @@ class StardewDialogueWindow:
             pady=1,
             cursor="hand2",
         ).pack(side="right")
+
+        tk.Button(
+            top_info,
+            text="⚙️",
+            command=lambda: open_gpt_luna_settings_modal(self.win, on_status_changed=lambda _: self._refresh_luna_badge()),
+            bg="#43285C",
+            fg="white",
+            font=("Segoe UI", 8, "bold"),
+            relief="groove",
+            padx=5,
+            pady=1,
+            cursor="hand2",
+        ).pack(side="right", padx=(2, 4))
+
+        self.luna_toggle_btn = tk.Button(
+            top_info,
+            text="🌙 GPT Luna: ATIVO",
+            command=self._toggle_luna_in_dialogue,
+            bg="#5C3385",
+            fg="#FFF5FF",
+            font=("Segoe UI", 8, "bold"),
+            relief="groove",
+            padx=7,
+            pady=1,
+            cursor="hand2",
+        )
+        self.luna_toggle_btn.pack(side="right", padx=(0, 2))
+        self._refresh_luna_badge()
 
         # Área principal do texto da fala (clicável para completar o efeito máquina de escrever)
         text_box_frame = tk.Frame(
@@ -627,17 +704,26 @@ class StardewDialogueWindow:
 
     def _query_character_ai_or_fallback(self, user_msg: str) -> str:
         """
-        Tenta responder interpretando o personagem via Gemini / Ollama se configurado,
+        Tenta responder interpretando o personagem via GPT Luna (se ativado) ou Gemini / Ollama,
         e possui um motor conversacional local rico no estilo Stardew Valley como fallback instantâneo.
         """
+        char_name = self.record.config.name
+        hearts = int(self.state.get("hearts", 6))
+        persona = self.state.get("persona_bio", "") or f"Morador amigável e carismático do Vale do Orvalho chamado {char_name}."
+        recent_history = self.state.get("history", [])[-4:]
+
+        if is_gpt_luna_enabled():
+            return generate_gpt_luna_reply(
+                char_name=char_name,
+                persona_bio=persona,
+                hearts=hearts,
+                user_msg=user_msg,
+                history=recent_history,
+            )
+
         settings = load_llm_settings()
         api_key = settings.get("api_key", "").strip()
         provider = settings.get("provider", "auto")
-
-        char_name = self.record.config.name
-        hearts = self.state.get("hearts", 6)
-        persona = self.state.get("persona_bio", "") or f"Morador amigável e carismático do Vale do Orvalho chamado {char_name}."
-        recent_history = self.state.get("history", [])[-4:]
         hist_str = "\n".join([f"Jogador: {h['user']}\n{char_name}: {h['npc']}" for h in recent_history])
 
         sys_prompt = (
@@ -656,9 +742,12 @@ class StardewDialogueWindow:
             for model_candidate in [settings.get("model", "gemini-2.5-flash"), "gemini-2.5-flash", "gemini-2.0-flash"]:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_candidate}:generateContent?key={api_key}"
+                    gen_cfg: Dict[str, Any] = {"temperature": 0.7, "maxOutputTokens": 1024}
+                    if "2.5" in model_candidate:
+                        gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
                     payload = {
                         "contents": [{"parts": [{"text": sys_prompt}]}],
-                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 180},
+                        "generationConfig": gen_cfg,
                     }
                     r = httpx.post(url, json=payload, timeout=8.0)
                     if r.status_code == 200:

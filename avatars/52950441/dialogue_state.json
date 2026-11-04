@@ -1,0 +1,18 @@
+{
+  "hearts": 9,
+  "max_hearts": 10,
+  "talks_count": 2,
+  "gifts_count": 1,
+  "custom_lines": [],
+  "persona_bio": "",
+  "history": [
+    {
+      "user": "fala aí",
+      "npc": "Olá, [Nome do Usuário]"
+    },
+    {
+      "user": "oii beijoo",
+      "npc": "Oii! Que bom te ver aqui"
+    }
+  ]
+}

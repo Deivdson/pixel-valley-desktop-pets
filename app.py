@@ -31,6 +31,11 @@ from spritesheet_importer import build_animations_from_4x6_image
 from library_manager import AvatarLibrary, AvatarRecord
 from desktop_pet import DesktopPetWindow
 from dialogue_box import StardewDialogueWindow
+from gpt_luna import (
+    is_gpt_luna_enabled,
+    set_gpt_luna_enabled,
+    open_gpt_luna_settings_modal,
+)
 
 
 BG_WOOD_DARK = "#5A2E14"
@@ -79,6 +84,7 @@ class StardewDesktopPetApp:
 
         self.active_pets: Dict[str, DesktopPetWindow] = {}
         self.gravity_var = tk.BooleanVar(value=True)
+        self.luna_enabled_var = tk.BooleanVar(value=is_gpt_luna_enabled())
 
         self.editing_avatar_id: Optional[str] = None
         self.current_source_photo_path: Optional[str] = None
@@ -103,13 +109,36 @@ class StardewDesktopPetApp:
         self._animate_editor_preview()
 
     def _build_ui(self):
-        header = tk.Frame(self.root, bg=BG_WOOD_MED, bd=3, relief="ridge", padx=14, pady=8)
+        # Barra de Menu Superior Nativa com Integração GPT Luna
+        menubar = tk.Menu(self.root)
+        luna_menu = tk.Menu(menubar, tearoff=0, bg=BG_PARCHMENT, fg=TEXT_DARK)
+        luna_menu.add_checkbutton(
+            label="🌙 Ativar Personalidade GPT Luna nos Avatares",
+            variable=self.luna_enabled_var,
+            command=self._on_toggle_gpt_luna,
+        )
+        luna_menu.add_command(
+            label="⚙️ Configurar GPT Luna (Estilo de Humor, Modelo & API)...",
+            command=self.open_gpt_luna_window,
+        )
+        menubar.add_cascade(label="🌙 Personalidade GPT Luna", menu=luna_menu)
+
+        tools_menu = tk.Menu(menubar, tearoff=0, bg=BG_PARCHMENT, fg=TEXT_DARK)
+        tools_menu.add_command(label="🌟 Soltar Todos na Área de Trabalho", command=self.spawn_all_avatars)
+        tools_menu.add_command(label="🏠 Recolher Todos", command=self.despawn_all_avatars)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="📖 Guia & Prompts Gemini", command=self.open_gemini_guide_window)
+        tools_menu.add_command(label="🔄 Atualizar Programa (Git)", command=self.update_and_reload_program)
+        menubar.add_cascade(label="🌾 Ações & Ferramentas", menu=tools_menu)
+        self.root.config(menu=menubar)
+
+        header = tk.Frame(self.root, bg=BG_WOOD_MED, bd=3, relief="ridge", padx=12, pady=8)
         header.pack(fill="x", padx=10, pady=(10, 6))
 
         title_lbl = tk.Label(
             header,
-            text="🌾 Pixel Valley Desktop Pets — Animador 4x6 & Biblioteca (Projeto de Fã Independente)",
-            font=("Segoe UI", 14, "bold"),
+            text="🌾 Pixel Valley Pets",
+            font=("Segoe UI", 13, "bold"),
             bg=BG_WOOD_MED,
             fg="#FFF6E0",
         )
@@ -118,9 +147,41 @@ class StardewDesktopPetApp:
         global_ctrl = tk.Frame(header, bg=BG_WOOD_MED)
         global_ctrl.pack(side="right")
 
+        luna_chk = tk.Checkbutton(
+            global_ctrl,
+            text="🌙 Ativar GPT Luna",
+            variable=self.luna_enabled_var,
+            command=self._on_toggle_gpt_luna,
+            bg="#4A2566",
+            fg="#FFF6E0",
+            selectcolor="#2D1B3D",
+            activebackground="#5C3385",
+            activeforeground="#FFF6E0",
+            font=("Segoe UI", 9, "bold"),
+            padx=6,
+            pady=2,
+            relief="ridge",
+            bd=2,
+            cursor="hand2",
+        )
+        luna_chk.pack(side="left", padx=4)
+
+        tk.Button(
+            global_ctrl,
+            text="⚙️ Configurar Luna",
+            command=self.open_gpt_luna_window,
+            bg="#5C3385",
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            relief="raised",
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left", padx=4)
+
         grav_chk = tk.Checkbutton(
             global_ctrl,
-            text="🧲 Gravidade na Barra de Tarefas",
+            text="🧲 Gravidade",
             variable=self.gravity_var,
             command=self._on_toggle_global_gravity,
             bg=BG_WOOD_MED,
@@ -128,22 +189,22 @@ class StardewDesktopPetApp:
             selectcolor=BG_WOOD_DARK,
             activebackground=BG_WOOD_MED,
             activeforeground="#FFF6E0",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 9, "bold"),
         )
-        grav_chk.pack(side="left", padx=10)
+        grav_chk.pack(side="left", padx=6)
 
         tk.Button(
             global_ctrl,
-            text="🌟 Soltar Todos na Área de Trabalho",
+            text="🌟 Soltar Todos",
             command=self.spawn_all_avatars,
             bg=BTN_GREEN,
             fg="white",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 9, "bold"),
             relief="raised",
-            padx=10,
+            padx=8,
             pady=4,
             cursor="hand2",
-        ).pack(side="left", padx=4)
+        ).pack(side="left", padx=3)
 
         tk.Button(
             global_ctrl,
@@ -151,38 +212,38 @@ class StardewDesktopPetApp:
             command=self.despawn_all_avatars,
             bg=BTN_RED,
             fg="white",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 9, "bold"),
             relief="raised",
-            padx=10,
+            padx=8,
             pady=4,
             cursor="hand2",
-        ).pack(side="left", padx=4)
+        ).pack(side="left", padx=3)
 
         tk.Button(
             global_ctrl,
-            text="🔄 Atualizar Programa",
+            text="🔄 Atualizar",
             command=self.update_and_reload_program,
             bg=BTN_BLUE,
             fg="white",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 9, "bold"),
             relief="raised",
-            padx=10,
+            padx=8,
             pady=4,
             cursor="hand2",
-        ).pack(side="left", padx=4)
+        ).pack(side="left", padx=3)
 
         tk.Button(
             global_ctrl,
-            text="📖 Guia & Prompts Gemini",
+            text="📖 Guia Gemini",
             command=self.open_gemini_guide_window,
             bg=BTN_PURPLE,
             fg="white",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 9, "bold"),
             relief="raised",
-            padx=10,
+            padx=8,
             pady=4,
             cursor="hand2",
-        ).pack(side="left", padx=4)
+        ).pack(side="left", padx=3)
 
         main_body = tk.Frame(self.root, bg=BG_WOOD_DARK)
         main_body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -1240,6 +1301,32 @@ class StardewDesktopPetApp:
         for pet in self.active_pets.values():
             pet.gravity_enabled = g
 
+    def _on_toggle_gpt_luna(self):
+        enabled = bool(self.luna_enabled_var.get())
+        set_gpt_luna_enabled(enabled)
+        self._notify_pets_luna_status(enabled)
+        self._refresh_library_grid()
+
+    def _notify_pets_luna_status(self, enabled: bool):
+        self.luna_enabled_var.set(bool(enabled))
+        for pet in self.active_pets.values():
+            if enabled:
+                pet.set_action("happy_dance", duration_ticks=40)
+                pet.show_speech("🌙 GPT Luna Ativado! ✨", duration=45)
+            else:
+                pet.show_speech("🌾 Modo Clássico!", duration=35)
+            if pet.dialogue_window and pet.dialogue_window.win.winfo_exists():
+                pet.dialogue_window._refresh_luna_badge()
+
+    def open_gpt_luna_window(self):
+        open_gpt_luna_settings_modal(
+            self.root,
+            on_status_changed=lambda enabled: (
+                self._notify_pets_luna_status(enabled),
+                self._refresh_library_grid(),
+            ),
+        )
+
     def edit_avatar_from_library(self, record: AvatarRecord):
         self.editing_avatar_id = record.avatar_id
         self.current_config = record.config
@@ -1279,7 +1366,8 @@ class StardewDesktopPetApp:
 
         records = self.library.list_avatars()
         active_count = len(self.active_pets)
-        self.count_lbl.configure(text=f"{len(records)} avatares | {active_count} ativos na tela")
+        luna_badge = "🌙 GPT Luna: ON" if is_gpt_luna_enabled() else "🌾 GPT Luna: OFF"
+        self.count_lbl.configure(text=f"{len(records)} avatares | {active_count} ativos | {luna_badge}")
 
         for rec in records:
             is_active = rec.avatar_id in self.active_pets

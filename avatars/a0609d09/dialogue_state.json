@@ -1,0 +1,18 @@
+{
+  "hearts": 10,
+  "max_hearts": 10,
+  "talks_count": 8,
+  "gifts_count": 3,
+  "custom_lines": [],
+  "persona_bio": "",
+  "history": [
+    {
+      "user": "diga uma piada",
+      "npc": "Ah, uma piada! Perfeito"
+    },
+    {
+      "user": "cade a piada?",
+      "npc": "Ah, desculpe a"
+    }
+  ]
+}
