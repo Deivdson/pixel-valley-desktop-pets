@@ -550,14 +550,22 @@ def generate_full_spritesheet(cfg: AvatarConfig) -> Image.Image:
 
 
 def extract_animation_frames(sheet: Image.Image, action: str, scale: int = 4) -> List[Image.Image]:
+    """
+    Extrai os 4 quadros de uma animação específica da Sprite Sheet (suporta tanto
+    células padrão 24x36 quanto folhas de alta densidade 48x72 importadas de IA 4x6).
+    """
     row_idx = ANIMATION_ROWS.get(action, 0)
+    cell_w = max(1, sheet.width // COLS)
+    cell_h = max(1, sheet.height // ROWS)
+    target_w = CELL_W * scale
+    target_h = CELL_H * scale
     frames = []
     for col_idx in range(COLS):
-        x1 = col_idx * CELL_W
-        y1 = row_idx * CELL_H
-        cell = sheet.crop((x1, y1, x1 + CELL_W, y1 + CELL_H))
-        if scale != 1:
-            cell = cell.resize((CELL_W * scale, CELL_H * scale), Image.Resampling.NEAREST)
+        x1 = col_idx * cell_w
+        y1 = row_idx * cell_h
+        cell = sheet.crop((x1, y1, x1 + cell_w, y1 + cell_h))
+        if (cell.width, cell.height) != (target_w, target_h):
+            cell = cell.resize((target_w, target_h), Image.Resampling.NEAREST)
         frames.append(cell)
     return frames
 

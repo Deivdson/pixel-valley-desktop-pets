@@ -1,5 +1,5 @@
 """
-Stardew Valley Desktop Pets — Conversor de Foto com Geração Livre por IA/LLM,
+Stardew Valley Desktop Pets — Importador de Folhas de Sprites 4x6 (Gemini IA),
 Editor em Camadas Originais, Biblioteca de Avatares e Motor de Área de Trabalho.
 """
 
@@ -24,15 +24,7 @@ from sprite_generator import (
     extract_animation_frames,
     ANIMATION_LABELS,
 )
-from llm_sprite_designer import (
-    load_llm_settings,
-    save_llm_settings,
-    get_copyable_llm_prompt,
-    parse_llm_matrix_json,
-    call_llm_vision_for_sprite,
-    sculpt_freeform_sprite_from_photo,
-    animate_freeform_frames_to_spritesheet,
-)
+from spritesheet_importer import build_animations_from_4x6_image
 from library_manager import AvatarLibrary, AvatarRecord
 from desktop_pet import DesktopPetWindow
 
@@ -48,11 +40,22 @@ BTN_BLUE = "#3B659C"
 BTN_PURPLE = "#6C3B8C"
 BTN_RED = "#B83B2A"
 
+GEMINI_4X6_PROMPT_TEMPLATE = (
+    "Crie uma sprite sheet em pixel art no estilo exato do jogo Stardew Valley "
+    "baseada na pessoa da foto enviada, organizada em uma grade de 4 linhas por 6 colunas "
+    "(24 poses de corpo inteiro) sobre um fundo sólido uniforme verde-escuro (#3E5652). "
+    "Mantenha exatamente as características reais da pessoa (cabelo, rosto, acessórios e roupa). "
+    "Linha 1: 3 poses de frente (parado e caminhando) e 3 poses 3/4 direita. "
+    "Linha 2: 6 poses de costas caminhando. "
+    "Linha 3: 2 poses perfil esquerdo e 4 poses caminhando para a direita. "
+    "Linha 4: 3 poses caminhando para a esquerda e 3 poses caminhando para a direita."
+)
+
 
 class StardewDesktopPetApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("🌾 Stardew Valley Desktop Pets — Gerador Livre por IA & Biblioteca de Avatares")
+        self.root.title("🌾 Stardew Valley Desktop Pets — Importador 4x6 (Gemini IA) & Biblioteca de Avatares")
         self.root.geometry("1220x810")
         self.root.minsize(1080, 730)
         self.root.configure(bg=BG_WOOD_DARK)
@@ -68,7 +71,7 @@ class StardewDesktopPetApp:
         self.current_photo_portrait: Optional[Image.Image] = None
         self.current_freeform_sheet: Optional[Image.Image] = None
         self.current_config = AvatarConfig(name="Novo Fazendeiro")
-        self.render_mode_var = tk.StringVar(value="freeform")  # "freeform" ou "vanilla_layers"
+        self.render_mode_var = tk.StringVar(value="freeform")
 
         self.preview_action_key = "idle"
         self.preview_frame_idx = 0
@@ -89,7 +92,7 @@ class StardewDesktopPetApp:
 
         title_lbl = tk.Label(
             header,
-            text="🌾 Stardew Valley Desktop Pets — Geração Livre por IA/Foto & Biblioteca",
+            text="🌾 Stardew Valley Desktop Pets — Animador de Sprites 4x6 (Gemini IA) & Biblioteca",
             font=("Segoe UI", 15, "bold"),
             bg=BG_WOOD_MED,
             fg="#FFF6E0",
@@ -157,7 +160,7 @@ class StardewDesktopPetApp:
 
         tk.Label(
             top_bar,
-            text="✨ Criador de Sprite por Foto (Livre IA) & Customizador",
+            text="✨ Importador de Sprites 4x6 (IA) & Customizador",
             font=("Segoe UI", 11, "bold"),
             bg=BG_PARCHMENT,
             fg=TEXT_DARK,
@@ -165,8 +168,8 @@ class StardewDesktopPetApp:
 
         tk.Button(
             top_bar,
-            text="🤖 Configurar LLM / Matriz IA",
-            command=self.open_llm_dialog,
+            text="📋 Copiar Prompt 4x6 p/ Gemini",
+            command=self.copy_gemini_4x6_prompt,
             bg=BTN_PURPLE,
             fg="white",
             font=("Segoe UI", 8, "bold"),
@@ -196,11 +199,11 @@ class StardewDesktopPetApp:
             cursor="hand2",
         ).pack(side="right")
 
-        # Botão Principal: Carregar Foto com Geração Livre IA / Escultor Pixel-a-Pixel
-        photo_btn = tk.Button(
+        # Botão Principal: Importar Imagem de Sprites 4x6 gerada por IA (ex: Gemini)
+        import_4x6_btn = tk.Button(
             panel,
-            text="📷 Carregar Foto de Pessoa (Desenhar Sprite 16x32 Livre Sem Depender de Peças Prontas)",
-            command=self.load_photo_and_convert,
+            text="🖼️ Importar Imagem de Sprites 4x6 (ex: Gemini_Generated_Image) & Gerar Animações",
+            command=self.import_4x6_spritesheet_image,
             bg=BTN_ORANGE,
             fg="white",
             font=("Segoe UI", 10, "bold"),
@@ -208,32 +211,36 @@ class StardewDesktopPetApp:
             relief="raised",
             cursor="hand2",
         )
-        photo_btn.pack(fill="x", pady=(0, 6))
+        import_4x6_btn.pack(fill="x", pady=(0, 6))
 
-        # Seletor de Modo de Renderização (Livre da Foto/LLM vs. Camadas Existentes do Jogo)
+        # Seletor de Grade + Modo
         mode_row = tk.Frame(panel, bg="#EFE0B9", bd=1, relief="groove", padx=8, pady=4)
         mode_row.pack(fill="x", pady=(0, 8))
-        tk.Label(mode_row, text="Modo do Sprite:", font=("Segoe UI", 9, "bold"), bg="#EFE0B9", fg=TEXT_DARK).pack(side="left")
-        tk.Radiobutton(
+
+        tk.Label(mode_row, text="Grade da Imagem:", font=("Segoe UI", 8, "bold"), bg="#EFE0B9", fg=TEXT_DARK).pack(side="left")
+        self.grid_layout_var = tk.StringVar(value="4x6 (24 sprites - Padrão Gemini)")
+        ttk.Combobox(
             mode_row,
-            text="🎨 Criação Livre da Foto / LLM (Fiel à Pessoa)",
-            variable=self.render_mode_var,
-            value="freeform",
-            command=self._on_switch_render_mode,
-            bg="#EFE0B9",
-            fg=TEXT_DARK,
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side="left", padx=8)
-        tk.Radiobutton(
+            textvariable=self.grid_layout_var,
+            values=[
+                "4x6 (24 sprites - Padrão Gemini)",
+                "4x4 (16 sprites)",
+                "3x4 (12 sprites)",
+            ],
+            state="readonly",
+            width=26,
+        ).pack(side="left", padx=6)
+
+        tk.Button(
             mode_row,
-            text="🧩 Peças Pré-Existentes do Jogo",
-            variable=self.render_mode_var,
-            value="vanilla_layers",
-            command=self._on_switch_render_mode,
-            bg="#EFE0B9",
-            fg=TEXT_DARK,
-            font=("Segoe UI", 9),
-        ).pack(side="left", padx=4)
+            text="📷 Ou Analisar Foto Comum",
+            command=self.load_photo_and_convert,
+            bg="#8C583A",
+            fg="white",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            cursor="hand2",
+        ).pack(side="right")
 
         preview_box = tk.Frame(panel, bg=BG_CARD, bd=2, relief="groove", padx=10, pady=6)
         preview_box.pack(fill="x", pady=(0, 8))
@@ -241,7 +248,7 @@ class StardewDesktopPetApp:
         # Coluna 1: Sprite Animado
         anim_col = tk.Frame(preview_box, bg=BG_CARD)
         anim_col.pack(side="left", padx=8)
-        tk.Label(anim_col, text="Sprite Stardew (16x32)", font=("Segoe UI", 9, "bold"), bg=BG_CARD, fg=TEXT_DARK).pack()
+        tk.Label(anim_col, text="Sprite Animado", font=("Segoe UI", 9, "bold"), bg=BG_CARD, fg=TEXT_DARK).pack()
         self.preview_canvas = tk.Canvas(anim_col, width=120, height=150, bg="#CFE8F7", bd=2, relief="sunken", highlightthickness=0)
         self.preview_canvas.pack(pady=4)
         self.preview_canvas.create_rectangle(0, 120, 125, 155, fill="#73B95F", outline="#4E8A3D")
@@ -266,7 +273,7 @@ class StardewDesktopPetApp:
         self.portrait_label.pack(pady=6)
         self.photo_status_lbl = tk.Label(
             port_col,
-            text="Retrato Oficial",
+            text="Retrato Stardew",
             font=("Segoe UI", 8),
             bg=BG_CARD,
             fg="#6E4720",
@@ -307,12 +314,12 @@ class StardewDesktopPetApp:
         tk.Label(form, text="Nome:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=0, column=0, sticky="w", pady=2)
         name_entry = tk.Entry(form, textvariable=self.name_var, font=("Segoe UI", 10), bg="#FFFDF7")
         name_entry.grid(row=0, column=1, sticky="ew", padx=4, pady=2)
-        name_entry.bind("<KeyRelease>", lambda e: self._on_form_change())
+        name_entry.bind("<KeyRelease>", lambda e: self._on_name_or_scale_change())
 
         tk.Label(form, text="Corpo Base:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=0, column=2, sticky="w", padx=(8, 0), pady=2)
         gender_cb = ttk.Combobox(form, textvariable=self.gender_var, values=["Masculino", "Feminino"], state="readonly")
         gender_cb.grid(row=0, column=3, sticky="ew", padx=4, pady=2)
-        gender_cb.bind("<<ComboboxSelected>>", lambda e: self._on_form_change())
+        gender_cb.bind("<<ComboboxSelected>>", lambda e: self._on_modular_layer_change())
 
         tk.Label(form, text="Cabelo:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=1, column=0, sticky="w", pady=2)
         hair_cb = ttk.Combobox(
@@ -337,7 +344,7 @@ class StardewDesktopPetApp:
             state="readonly",
         )
         beard_cb.grid(row=2, column=1, sticky="ew", padx=4, pady=2)
-        beard_cb.bind("<<ComboboxSelected>>", lambda e: self._on_form_change())
+        beard_cb.bind("<<ComboboxSelected>>", lambda e: self._on_modular_layer_change())
 
         tk.Label(form, text="Óculos:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=2, column=2, sticky="w", padx=(8, 0), pady=2)
         glasses_cb = ttk.Combobox(
@@ -347,7 +354,7 @@ class StardewDesktopPetApp:
             state="readonly",
         )
         glasses_cb.grid(row=2, column=3, sticky="ew", padx=4, pady=2)
-        glasses_cb.bind("<<ComboboxSelected>>", lambda e: self._on_form_change())
+        glasses_cb.bind("<<ComboboxSelected>>", lambda e: self._on_modular_layer_change())
 
         tk.Label(form, text="Estilo Roupa:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=3, column=0, sticky="w", pady=2)
         outfit_cb = ttk.Combobox(
@@ -360,9 +367,9 @@ class StardewDesktopPetApp:
         outfit_cb.bind("<<ComboboxSelected>>", self._on_outfit_preset_selected)
 
         tk.Label(form, text="Camisa ID (0-111):", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=3, column=2, sticky="w", padx=(8, 0), pady=2)
-        shirt_spin = tk.Spinbox(form, from_=0, to=111, textvariable=self.shirt_idx_var, command=lambda: self._on_form_change(), font=("Segoe UI", 9))
+        shirt_spin = tk.Spinbox(form, from_=0, to=111, textvariable=self.shirt_idx_var, command=lambda: self._on_modular_layer_change(), font=("Segoe UI", 9))
         shirt_spin.grid(row=3, column=3, sticky="ew", padx=4, pady=2)
-        shirt_spin.bind("<Return>", lambda e: self._on_form_change())
+        shirt_spin.bind("<Return>", lambda e: self._on_modular_layer_change())
 
         tk.Label(form, text="Chapéu:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=4, column=0, sticky="w", pady=2)
         hat_cb = ttk.Combobox(
@@ -372,12 +379,12 @@ class StardewDesktopPetApp:
             state="readonly",
         )
         hat_cb.grid(row=4, column=1, sticky="ew", padx=4, pady=2)
-        hat_cb.bind("<<ComboboxSelected>>", lambda e: self._on_form_change())
+        hat_cb.bind("<<ComboboxSelected>>", lambda e: self._on_modular_layer_change())
 
         tk.Label(form, text="Tamanho:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=4, column=2, sticky="w", padx=(8, 0), pady=2)
         scale_cb = ttk.Combobox(form, textvariable=self.scale_var, values=[3, 4, 5, 6], state="readonly")
         scale_cb.grid(row=4, column=3, sticky="ew", padx=4, pady=2)
-        scale_cb.bind("<<ComboboxSelected>>", lambda e: self._on_form_change())
+        scale_cb.bind("<<ComboboxSelected>>", lambda e: self._on_name_or_scale_change())
 
         tk.Label(form, text="Tom Pele:", font=("Segoe UI", 9, "bold"), bg=BG_PARCHMENT, fg=TEXT_DARK).grid(row=5, column=0, sticky="w", pady=2)
         self.skin_btn = tk.Button(form, text="Tom de Pele", command=lambda: self._pick_color(self.skin_color_var), font=("Segoe UI", 8, "bold"))
@@ -504,134 +511,93 @@ class StardewDesktopPetApp:
         self.lib_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-    def open_llm_dialog(self):
-        """Janela para configurar a API de Visão (Gemini / OpenAI / Ollama) ou colar JSON gerado por qualquer LLM."""
-        dlg = tk.Toplevel(self.root)
-        dlg.title("🤖 Configuração da LLM Vision & Importador de Matriz 16x32 Livre")
-        dlg.geometry("680x580")
-        dlg.configure(bg=BG_PARCHMENT)
-        dlg.transient(self.root)
+    def copy_gemini_4x6_prompt(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(GEMINI_4X6_PROMPT_TEMPLATE)
+        messagebox.showinfo(
+            "Prompt 4x6 Copiado! 📋",
+            "O prompt para gerar folhas de sprites 4x6 no Gemini foi copiado para a sua área de transferência!\n\n"
+            f"Prompt:\n\"{GEMINI_4X6_PROMPT_TEMPLATE}\"\n\n"
+            "Basta enviar a foto da pessoa no Gemini com esse prompt, baixar a imagem gerada e clicar em '🖼️ Importar Imagem de Sprites 4x6'!",
+        )
 
-        settings = load_llm_settings()
+    def _get_selected_grid_dims(self):
+        val = self.grid_layout_var.get()
+        if "4x4" in val:
+            return (4, 4)
+        if "3x4" in val:
+            return (3, 4)
+        return (4, 6)
 
-        f_top = tk.LabelFrame(dlg, text="1. Provedor de IA para Desenho Livre de Fotos", bg=BG_PARCHMENT, fg=TEXT_DARK, font=("Segoe UI", 10, "bold"), padx=10, pady=8)
-        f_top.pack(fill="x", padx=12, pady=8)
-
-        prov_var = tk.StringVar(value=settings.get("provider", "auto"))
-        key_var = tk.StringVar(value=settings.get("api_key", ""))
-        model_var = tk.StringVar(value=settings.get("model", "gemini-2.5-flash"))
-        notes_var = tk.StringVar(value=settings.get("custom_prompt_notes", ""))
-
-        tk.Label(f_top, text="Motor:", bg=BG_PARCHMENT, font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w", pady=2)
-        ttk.Combobox(
-            f_top,
-            textvariable=prov_var,
-            values=["auto", "gemini", "openai", "ollama", "sculptor_offline"],
-            state="readonly",
-            width=25,
-        ).grid(row=0, column=1, sticky="w", padx=6, pady=2)
-
-        tk.Label(f_top, text="Modelo:", bg=BG_PARCHMENT, font=("Segoe UI", 9, "bold")).grid(row=0, column=2, sticky="w", padx=6, pady=2)
-        tk.Entry(f_top, textvariable=model_var, width=22).grid(row=0, column=3, sticky="ew", pady=2)
-
-        tk.Label(f_top, text="API Key (Gemini/OpenAI):", bg=BG_PARCHMENT, font=("Segoe UI", 9, "bold")).grid(row=1, column=0, sticky="w", pady=2)
-        tk.Entry(f_top, textvariable=key_var, show="*", width=48).grid(row=1, column=1, columnspan=3, sticky="ew", padx=6, pady=2)
-
-        tk.Label(f_top, text="Instrução Extra p/ IA:", bg=BG_PARCHMENT, font=("Segoe UI", 9, "bold")).grid(row=2, column=0, sticky="w", pady=2)
-        tk.Entry(f_top, textvariable=notes_var, width=48).grid(row=2, column=1, columnspan=3, sticky="ew", padx=6, pady=2)
-
-        def _save_cfg():
-            settings["provider"] = prov_var.get()
-            settings["api_key"] = key_var.get().strip()
-            settings["model"] = model_var.get().strip()
-            settings["custom_prompt_notes"] = notes_var.get().strip()
-            save_llm_settings(settings)
-            messagebox.showinfo("Salvo!", "Configurações de LLM salvas com sucesso!", parent=dlg)
-
-        tk.Button(f_top, text="💾 Salvar Configuração de API", command=_save_cfg, bg=BTN_GREEN, fg="white", font=("Segoe UI", 9, "bold"), padx=10).grid(row=3, column=1, columnspan=3, sticky="e", pady=(6, 0))
-
-        # Parte 2: Copiar Prompt / Colar Matriz 16x32 JSON de qualquer LLM
-        f_bot = tk.LabelFrame(dlg, text="2. Usar Qualquer Chat IA (Copiar Prompt + Colar JSON 16x32 da LLM)", bg=BG_PARCHMENT, fg=TEXT_DARK, font=("Segoe UI", 10, "bold"), padx=10, pady=8)
-        f_bot.pack(fill="both", expand=True, padx=12, pady=(0, 10))
-
-        def _copy_prompt():
-            self.root.clipboard_clear()
-            self.root.clipboard_append(get_copyable_llm_prompt())
-            messagebox.showinfo(
-                "Prompt Copiado! 📋",
-                "O Prompt de Pixel Art 16x32 Stardew Valley foi copiado para a sua área de transferência!\n\n"
-                "Envie a foto da pessoa junto com esse prompt em qualquer LLM (ou aqui no nosso chat) e cole o JSON gerado abaixo!",
-                parent=dlg,
+    def import_4x6_spritesheet_image(self):
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_dir = downloads_dir if os.path.exists(downloads_dir) else os.path.expanduser("~")
+        file_path = filedialog.askopenfilename(
+            title="Selecione a Imagem de Sprites 4x6 (ex: Gemini_Generated_Image)",
+            initialdir=initial_dir,
+            filetypes=[
+                ("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp"),
+                ("Todos os arquivos", "*.*"),
+            ],
+        )
+        if not file_path:
+            return
+        try:
+            g_rows, g_cols = self._get_selected_grid_dims()
+            full_sheet, portrait, stats = build_animations_from_4x6_image(
+                file_path,
+                grid_rows=g_rows,
+                grid_cols=g_cols,
             )
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            if "Gemini_Generated_Image" in base_name:
+                base_name = "Avatar Gemini " + base_name.split("_")[-1][:4]
+            else:
+                base_name = base_name.replace("_", " ").replace("-", " ").title()[:22]
 
-        tk.Button(
-            f_bot,
-            text="📋 Copiar Prompt Stardew 16x32 para enviar junto com a Foto em qualquer LLM",
-            command=_copy_prompt,
-            bg=BTN_ORANGE,
-            fg="white",
-            font=("Segoe UI", 9, "bold"),
-            pady=5,
-        ).pack(fill="x", pady=(0, 6))
+            self.editing_avatar_id = None
+            self.current_source_photo_path = file_path
+            self.current_photo_portrait = portrait
+            self.current_freeform_sheet = full_sheet
+            self.render_mode_var.set("freeform")
+            self.current_config = AvatarConfig(name=base_name, is_male=False, scale=4)
+            self._sync_vars_from_config()
+            self._refresh_live_preview()
 
-        tk.Label(f_bot, text="Cole abaixo o JSON retornado pela LLM (contendo palette, front_16x32 e side_16x32):", bg=BG_PARCHMENT, font=("Segoe UI", 8, "bold")).pack(anchor="w")
-        json_txt = tk.Text(f_bot, height=12, font=("Consolas", 9), bg="#FFFDF7")
-        json_txt.pack(fill="both", expand=True, pady=4)
+            messagebox.showinfo(
+                "Sprites 4x6 Importados e Animados! 🎉",
+                f"A folha '{os.path.basename(file_path)}' ({g_rows}x{g_cols}) foi recortada, "
+                "teve o fundo removido e gerou todas as 8 animações!\n\n"
+                f"• Quadros Frontais detectados: {stats['front_count']}\n"
+                f"• Quadros Direita detectados: {stats['right_count']}\n"
+                f"• Quadros Esquerda detectados: {stats['left_count']}\n"
+                f"• Quadros Costas detectados: {stats['back_count']}\n\n"
+                "Clique em '💾 Salvar na Biblioteca & Soltar na Área de Trabalho' para ver o bonequinho andando!",
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro ao Importar Folha 4x6", f"Não foi possível processar a folha de sprites:\n{exc}")
 
-        def _apply_pasted_json():
-            raw = json_txt.get("1.0", "end").strip()
-            if not raw:
-                return
-            try:
-                # Limpar cercas markdown ```json se houver
-                if "```" in raw:
-                    parts = raw.split("```")
-                    for p in parts:
-                        if "{" in p and "front_16x32" in p:
-                            raw = p.lstrip("json").strip()
-                            break
-                data = json.loads(raw)
-                res = parse_llm_matrix_json(data)
-                if not res:
-                    raise ValueError("JSON não contém 'front_16x32' válido com 24-32 linhas.")
-                front_img, side_img = res
-                if data.get("name"):
-                    self.name_var.set(data["name"])
-                self._sync_config_from_vars()
-                self.current_freeform_sheet = animate_freeform_frames_to_spritesheet(front_img, side_img, self.current_config)
-                self.render_mode_var.set("freeform")
-                self._refresh_live_preview()
-                dlg.destroy()
-                messagebox.showinfo("Sprite Livre Aplicado! 🎨", "A matriz 16x32 gerada pela LLM foi convertida em todas as 8 animações com sucesso!")
-            except Exception as exc:
-                messagebox.showerror("Erro no JSON", f"Não foi possível ler a matriz JSON:\n{exc}", parent=dlg)
+    def _on_name_or_scale_change(self):
+        self._sync_config_from_vars()
+        self._refresh_live_preview()
 
-        tk.Button(
-            f_bot,
-            text="✨ Gerar Todas as Animações a partir do JSON Colado",
-            command=_apply_pasted_json,
-            bg=BTN_PURPLE,
-            fg="white",
-            font=("Segoe UI", 10, "bold"),
-            pady=6,
-        ).pack(fill="x", pady=(4, 0))
-
-    def _on_switch_render_mode(self):
-        if self.render_mode_var.get() == "freeform" and self.current_freeform_sheet is None and self.current_source_photo_path:
-            front_img, side_img = sculpt_freeform_sprite_from_photo(self.current_source_photo_path, self.current_config)
-            self.current_freeform_sheet = animate_freeform_frames_to_spritesheet(front_img, side_img, self.current_config)
+    def _on_modular_layer_change(self):
+        self.render_mode_var.set("vanilla_layers")
+        self.current_freeform_sheet = None
+        self.current_photo_portrait = None
+        self._sync_config_from_vars()
+        self._update_color_buttons()
         self._refresh_live_preview()
 
     def _on_hair_preset_selected(self, event=None):
         st = self.hair_style_var.get()
         if st in HAIR_STYLE_TO_SDV_INDEX:
             self.hair_idx_var.set(HAIR_STYLE_TO_SDV_INDEX[st])
-        self._on_form_change()
+        self._on_modular_layer_change()
 
     def _on_hair_spin_changed(self):
         self.hair_style_var.set("custom")
-        self.render_mode_var.set("vanilla_layers")
-        self._on_form_change()
+        self._on_modular_layer_change()
 
     def _on_outfit_preset_selected(self, event=None):
         outfit_defaults = {
@@ -644,11 +610,12 @@ class StardewDesktopPetApp:
         st = self.outfit_style_var.get()
         if st in outfit_defaults:
             self.shirt_idx_var.set(outfit_defaults[st])
-        self._on_form_change()
+        self._on_modular_layer_change()
 
     def randomize_avatar(self):
         self.render_mode_var.set("vanilla_layers")
         self.current_freeform_sheet = None
+        self.current_photo_portrait = None
         self.gender_var.set(random.choice(["Masculino", "Feminino"]))
         self.hair_style_var.set("custom")
         self.hair_idx_var.set(random.randint(0, 55))
@@ -662,7 +629,7 @@ class StardewDesktopPetApp:
         self.beard_style_var.set(random.choice(["sem_barba", "sem_barba", "bigode", "barba_cheia"]) if self.gender_var.get() == "Masculino" else "sem_barba")
         self.glasses_style_var.set(random.choice(["nenhum", "nenhum", "redondo", "quadrado", "escuro"]))
         self.hat_style_var.set(random.choice(["nenhum", "nenhum", "palha", "bone", "flor"]))
-        self._on_form_change()
+        self._on_modular_layer_change()
 
     def _sync_vars_from_config(self):
         cfg = self.current_config
@@ -739,26 +706,17 @@ class StardewDesktopPetApp:
     def _set_quick_skin(self, skin_idx: int, hex_val: str):
         self.skin_idx_var.set(skin_idx)
         self.skin_color_var.set(hex_val)
-        self._on_form_change()
+        self._on_modular_layer_change()
 
     def _set_quick_color(self, var: tk.StringVar, hex_val: str):
         var.set(hex_val)
-        self._on_form_change()
+        self._on_modular_layer_change()
 
     def _pick_color(self, var: tk.StringVar):
         _, hex_val = colorchooser.askcolor(color=var.get(), title="Escolher Cor Stardew Valley")
         if hex_val:
             var.set(hex_val.upper())
-            self._on_form_change()
-
-    def _on_form_change(self):
-        self._sync_config_from_vars()
-        self._update_color_buttons()
-        # Se houver foto de origem carregada e estiver no modo livre, re-esculpir com os novos ajustes de cor/barba/óculos
-        if self.render_mode_var.get() == "freeform" and self.current_source_photo_path and os.path.exists(self.current_source_photo_path):
-            front_img, side_img = sculpt_freeform_sprite_from_photo(self.current_source_photo_path, self.current_config)
-            self.current_freeform_sheet = animate_freeform_frames_to_spritesheet(front_img, side_img, self.current_config)
-        self._refresh_live_preview()
+            self._on_modular_layer_change()
 
     def _on_change_preview_action(self, event=None):
         selected_label = self.preview_action_var.get()
@@ -780,12 +738,9 @@ class StardewDesktopPetApp:
 
         if self.current_photo_portrait is not None:
             port_img = self.current_photo_portrait.resize((96, 96), Image.Resampling.NEAREST)
-            self.photo_status_lbl.configure(text="📷 Retrato Pixel da Foto")
+            self.photo_status_lbl.configure(text="🖼️ Retrato do Sprite 4x6")
         else:
-            bust = sheet.crop((4, 2, 20, 20)).resize((56, 56), Image.Resampling.NEAREST)
-            mod_port = generate_modular_portrait(self.current_config)
-            mod_port.paste(bust, (4, 4), bust)
-            port_img = mod_port.resize((96, 96), Image.Resampling.NEAREST)
+            port_img = generate_modular_portrait(self.current_config).resize((96, 96), Image.Resampling.NEAREST)
             self.photo_status_lbl.configure(text="🎨 Retrato Stardew")
         self.portrait_tk = ImageTk.PhotoImage(port_img)
         self.portrait_label.configure(image=self.portrait_tk)
@@ -828,36 +783,15 @@ class StardewDesktopPetApp:
             self.editing_avatar_id = None
             self.current_source_photo_path = file_path
             self.current_photo_portrait = portrait_img
+            self.current_freeform_sheet = None
+            self.render_mode_var.set("vanilla_layers")
             self.current_config = cfg
-            self.render_mode_var.set("freeform")
-
-            # 1. Tentar geração via LLM Vision API se houver chave/servidor configurado
-            llm_result = None
-            engine_used = "Escultor Livre Pixel-a-Pixel da Silhueta da Foto"
-            try:
-                llm_result = call_llm_vision_for_sprite(file_path)
-            except Exception:
-                llm_result = None
-
-            if llm_result is not None:
-                front_16x32, side_16x32, desc = llm_result
-                engine_used = f"LLM Vision ({desc})"
-            else:
-                # 2. Esculpir livremente pixel-a-pixel direto da silhueta real da foto (sem depender de elementos prontos!)
-                front_16x32, side_16x32 = sculpt_freeform_sprite_from_photo(file_path, cfg)
-
-            self.current_freeform_sheet = animate_freeform_frames_to_spritesheet(front_16x32, side_16x32, cfg)
             self._sync_vars_from_config()
             self._refresh_live_preview()
-
             messagebox.showinfo(
-                "Sprite Livre Criado a partir da Foto! 🎨🌾",
-                f"O bonequinho 16x32 de '{os.path.basename(file_path)}' foi desenhado livremente "
-                f"(sem ficar preso aos cabelos/roupas pré-existentes do jogo)!\n\n"
-                f"• Motor utilizado: {engine_used}\n"
-                f"• Contorno real do cabelo, rosto e roupa esculpidos no padrão Stardew Valley\n\n"
-                "Dica: Você pode alternar entre '🎨 Criação Livre da Foto / LLM' e '🧩 Peças Pré-Existentes do Jogo' "
-                "a qualquer momento, ou clicar em '🤖 Configurar LLM / Matriz IA'!",
+                "Foto Analisada! 🌾",
+                f"Características extraídas de '{os.path.basename(file_path)}' e aplicadas às camadas do Stardew Valley.\n\n"
+                "Dica: Para avatares personalizados idênticos à pessoa, use o botão '🖼️ Importar Imagem de Sprites 4x6'!",
             )
         except Exception as exc:
             messagebox.showerror("Erro ao Analisar Foto", f"Não foi possível processar a imagem:\n{exc}")
@@ -997,7 +931,7 @@ class StardewDesktopPetApp:
             info.pack(side="left", fill="both", expand=True)
 
             status_badge = "🟢 Ativo na Área de Trabalho" if is_active else "⚪ Na Biblioteca"
-            mode_badge = "🎨 Livre IA/Foto" if rec.is_freeform_sprite else "🧩 Camadas Stardew"
+            mode_badge = "🖼️ Sprite 4x6 IA" if rec.is_freeform_sprite else "🧩 Camadas Stardew"
             tk.Label(
                 info,
                 text=f"{rec.config.name}   [{mode_badge}]   ({status_badge})",
@@ -1008,8 +942,9 @@ class StardewDesktopPetApp:
             ).pack(fill="x")
 
             details_txt = (
-                f"Pele: {rec.config.skin_color} | Cabelo: {rec.config.hair_color} | "
-                f"Barba: {rec.config.beard_style} | Óculos: {rec.config.glasses_style}"
+                "Importado de Folha de Sprites 4x6 (8 Animações Ativas)"
+                if rec.is_freeform_sprite
+                else f"Cabelo #{rec.config.hair_index} | Camisa #{rec.config.shirt_index} | Barba: {rec.config.beard_style}"
             )
             tk.Label(
                 info,
@@ -1048,7 +983,7 @@ class StardewDesktopPetApp:
 
             tk.Button(
                 btns,
-                text="✏️ Editar",
+                text="✏️ Editar / Visualizar",
                 command=lambda r=rec: self.edit_avatar_from_library(r),
                 bg=BTN_BLUE,
                 fg="white",
@@ -1074,6 +1009,8 @@ def main():
     app = StardewDesktopPetApp(root)
     avatars = app.library.list_avatars()
     if avatars:
+        # Carregar no preview e soltar na área de trabalho o primeiro avatar (incluindo o 4x6 importado!)
+        app.edit_avatar_from_library(avatars[0])
         app.spawn_avatar(avatars[0])
     root.mainloop()
 

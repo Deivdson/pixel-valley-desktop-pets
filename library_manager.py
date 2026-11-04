@@ -197,18 +197,20 @@ class AvatarLibrary:
             sheet = generate_full_spritesheet(config)
         sheet.save(os.path.join(folder, "spritesheet.png"))
 
-        # Gerar retrato a partir do busto real da sheet
-        bust = sheet.crop((4, 2, 20, 20)).resize((56, 56), Image.Resampling.NEAREST)
-        mod_portrait = generate_modular_portrait(config)
-        mod_portrait.paste(bust, (4, 4), bust)
-        mod_portrait.save(os.path.join(folder, "portrait.png"))
-
         has_photo = False
         if photo_portrait is not None:
             photo_portrait.save(os.path.join(folder, "photo_portrait.png"))
+            photo_portrait.save(os.path.join(folder, "portrait.png"))
             has_photo = True
         elif os.path.exists(os.path.join(folder, "photo_portrait.png")):
             has_photo = True
+        else:
+            cell_w = max(1, sheet.width // 4)
+            cell_h = max(1, sheet.height // 8)
+            bust = sheet.crop((int(cell_w * 0.16), int(cell_h * 0.06), int(cell_w * 0.84), int(cell_h * 0.56))).resize((56, 56), Image.Resampling.NEAREST)
+            mod_portrait = generate_modular_portrait(config)
+            mod_portrait.paste(bust, (4, 4), bust)
+            mod_portrait.save(os.path.join(folder, "portrait.png"))
 
         if source_photo_path and os.path.exists(source_photo_path):
             try:
