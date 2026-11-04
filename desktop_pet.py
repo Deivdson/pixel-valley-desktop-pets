@@ -117,6 +117,7 @@ class DesktopPetWindow:
         self.running = True
         self.dialogue_window: Optional[StardewDialogueWindow] = None
         self.on_portrait_updated_callback: Optional[Callable[[AvatarRecord], None]] = None
+        self.on_open_guide_callback: Optional[Callable[[], None]] = None
 
         # Elementos do Canvas
         self.sprite_item = self.canvas.create_image(
@@ -205,6 +206,11 @@ class DesktopPetWindow:
             label="🔄 Recarregar Sprite / Atualizar Pet",
             command=self.reload_self_from_disk,
         )
+        if self.on_open_guide_callback:
+            self.menu.add_command(
+                label="📖 Guia & Prompts Gemini (Criar Skins/Diálogos)",
+                command=self.on_open_guide_callback,
+            )
         self.menu.add_separator()
         self.menu.add_command(label="🏠 Recolher para Biblioteca", command=self.close)
 

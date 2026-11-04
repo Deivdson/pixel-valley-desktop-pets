@@ -55,6 +55,16 @@ GEMINI_4X6_PROMPT_TEMPLATE = (
     "Linha 4: 3 poses caminhando para a esquerda e 3 poses caminhando para a direita."
 )
 
+GEMINI_DIALOGUE_PORTRAIT_PROMPT = (
+    "Crie um retrato de busto em pixel art no estilo exato das caixas de diálogo do jogo Stardew Valley "
+    "(proporção quadrada 1:1) baseado na pessoa da foto enviada (ou no sprite enviado). "
+    "Mantenha fielmente todas as características da pessoa: formato e cor do cabelo/cachos, tom de pele, "
+    "expressão amigável, barba/bigode, óculos, acessórios e a mesma roupa/camisa. "
+    "Coloque o personagem centralizado do peito/ombros para cima, sobre um fundo de pergaminho bege suave "
+    "envelhecido (#D8AE76) cercado por uma moldura clássica de madeira esculpida marrom-alaranjada nos 4 cantos, "
+    "com contornos escuros quentes e sombreamento autêntico de pixel art 16-bit."
+)
+
 
 class StardewDesktopPetApp:
     def __init__(self, root: tk.Tk):
@@ -161,6 +171,19 @@ class StardewDesktopPetApp:
             cursor="hand2",
         ).pack(side="left", padx=4)
 
+        tk.Button(
+            global_ctrl,
+            text="📖 Guia & Prompts Gemini",
+            command=self.open_gemini_guide_window,
+            bg=BTN_PURPLE,
+            fg="white",
+            font=("Segoe UI", 10, "bold"),
+            relief="raised",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left", padx=4)
+
         main_body = tk.Frame(self.root, bg=BG_WOOD_DARK)
         main_body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         main_body.columnconfigure(0, weight=5)
@@ -187,8 +210,8 @@ class StardewDesktopPetApp:
 
         tk.Button(
             top_bar,
-            text="📋 Copiar Prompt 4x6 p/ Gemini",
-            command=self.copy_gemini_4x6_prompt,
+            text="📖 Guia & Prompts Gemini",
+            command=self.open_gemini_guide_window,
             bg=BTN_PURPLE,
             fg="white",
             font=("Segoe UI", 8, "bold"),
@@ -552,6 +575,191 @@ class StardewDesktopPetApp:
             "Basta enviar a foto da pessoa no Gemini com esse prompt, baixar a imagem gerada e clicar em '🖼️ Importar Imagem de Sprites 4x6'!",
         )
 
+    def copy_gemini_dialogue_prompt(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(GEMINI_DIALOGUE_PORTRAIT_PROMPT)
+        messagebox.showinfo(
+            "Prompt da Caixa de Diálogo Copiado! 📋",
+            "O prompt para gerar o Retrato da Caixa de Diálogo no Gemini foi copiado para a sua área de transferência!\n\n"
+            f"Prompt:\n\"{GEMINI_DIALOGUE_PORTRAIT_PROMPT}\"\n\n"
+            "Envie a foto da pessoa (ou a própria sprite sheet já gerada) no Gemini com esse prompt, baixe a imagem quadrada e clique em '🖼️ Importar Caixa de Diálogo'!",
+        )
+
+    def open_gemini_guide_window(self):
+        """
+        Abre uma janela estilo Pergaminho do Stardew Valley com o Guia Passo a Passo completo
+        para criar (1) a Folha de Sprites 4x6 e (2) o Quadro de Retrato da Caixa de Diálogo no Gemini,
+        com botões de copiar os dois prompts e abrir o Gemini no navegador.
+        """
+        import webbrowser
+
+        win = tk.Toplevel(self.root)
+        win.title("📖 Guia de Criação de Skins e Caixas de Diálogo no Gemini IA")
+        win.geometry("820x690")
+        win.configure(bg=BG_WOOD_DARK)
+        win.wm_attributes("-topmost", True)
+
+        outer = tk.Frame(win, bg=BG_WOOD_MED, bd=4, relief="ridge", padx=12, pady=10)
+        outer.pack(fill="both", expand=True, padx=10, pady=10)
+
+        hdr = tk.Frame(outer, bg=BG_WOOD_MED)
+        hdr.pack(fill="x", pady=(0, 8))
+
+        tk.Label(
+            hdr,
+            text="📖 Guia Passo a Passo: Como Criar Skins 4x6 e Retratos de Diálogo no Gemini",
+            font=("Segoe UI", 13, "bold"),
+            bg=BG_WOOD_MED,
+            fg="#FFF6E0",
+        ).pack(side="left")
+
+        tk.Button(
+            hdr,
+            text="🌐 Abrir Google Gemini",
+            command=lambda: webbrowser.open("https://gemini.google.com/"),
+            bg=BTN_GREEN,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=10,
+            pady=3,
+            cursor="hand2",
+        ).pack(side="right")
+
+        body = tk.Frame(outer, bg=BG_PARCHMENT, bd=3, relief="sunken", padx=14, pady=10)
+        body.pack(fill="both", expand=True)
+
+        # ==================== CASO 1: FOLHA DE SPRITES 4x6 ====================
+        sec1 = tk.LabelFrame(
+            body,
+            text=" 🏃‍♂️ CASO 1: Criar a Folha de Sprites Animada (Grade 4x6 com 24 Poses) ",
+            font=("Segoe UI", 10, "bold"),
+            bg=BG_CARD,
+            fg=TEXT_DARK,
+            padx=10,
+            pady=8,
+        )
+        sec1.pack(fill="x", pady=(0, 10))
+
+        steps1 = (
+            "1. Acesse o Google Gemini (gemini.google.com) e anexe uma foto nítida da pessoa (rosto e roupa visíveis).\n"
+            "2. Clique no botão roxo abaixo para copiar o Prompt de Sprites 4x6 e cole junto com a foto no Gemini.\n"
+            "3. Baixe a imagem gerada (grade 4 linhas x 6 colunas) para a sua pasta Downloads.\n"
+            "4. Aqui no programa, clique no botão laranja '🖼️ Importar Imagem de Sprites 4x6' e selecione a imagem:\n"
+            "   o sistema removerá o fundo automaticamente e criará todas as 8 animações (andar p/ esquerda, direita, café, pesca, etc.)!"
+        )
+        tk.Label(
+            sec1,
+            text=steps1,
+            font=("Segoe UI", 9),
+            bg=BG_CARD,
+            fg=TEXT_DARK,
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 6))
+
+        p1_txt = tk.Text(sec1, height=4, font=("Consolas", 9), bg="#FFFDF8", fg="#2B1506", wrap="word", bd=2, relief="sunken")
+        p1_txt.insert("1.0", GEMINI_4X6_PROMPT_TEMPLATE)
+        p1_txt.configure(state="disabled")
+        p1_txt.pack(fill="x", pady=(0, 6))
+
+        btn_row1 = tk.Frame(sec1, bg=BG_CARD)
+        btn_row1.pack(fill="x")
+        tk.Button(
+            btn_row1,
+            text="📋 Copiar Prompt 1 (Folha de Sprites 4x6)",
+            command=self.copy_gemini_4x6_prompt,
+            bg=BTN_PURPLE,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left")
+
+        tk.Button(
+            btn_row1,
+            text="🖼️ Já gerei! Importar Folha 4x6 Agora",
+            command=lambda: [win.destroy(), self.import_4x6_spritesheet_image()],
+            bg=BTN_ORANGE,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="right")
+
+        # ==================== CASO 2: QUADRO DE RETRATO DA CAIXA DE DIÁLOGO ====================
+        sec2 = tk.LabelFrame(
+            body,
+            text=" 💬 CASO 2: Criar o Quadro de Retrato da Caixa de Diálogo (Busto 1:1 com Moldura) ",
+            font=("Segoe UI", 10, "bold"),
+            bg=BG_CARD,
+            fg=TEXT_DARK,
+            padx=10,
+            pady=8,
+        )
+        sec2.pack(fill="x", pady=(0, 8))
+
+        steps2 = (
+            "1. No mesmo chat do Gemini (após gerar os sprites 4x6) OU enviando a foto da pessoa + a sprite sheet gerada:\n"
+            "2. Clique no botão azul abaixo para copiar o Prompt do Retrato da Caixa de Diálogo e envie no Gemini.\n"
+            "   (Dica: pedir no mesmo chat faz o Gemini manter exatamente a mesma roupa, óculos, barba e penteado do sprite!).\n"
+            "3. Baixe a imagem quadrada gerada com a moldura de madeira.\n"
+            "4. Clique em '🖼️ Importar Caixa de Diálogo' no painel do avatar (ou dentro da própria janela de conversa)!"
+        )
+        tk.Label(
+            sec2,
+            text=steps2,
+            font=("Segoe UI", 9),
+            bg=BG_CARD,
+            fg=TEXT_DARK,
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 6))
+
+        p2_txt = tk.Text(sec2, height=4, font=("Consolas", 9), bg="#FFFDF8", fg="#2B1506", wrap="word", bd=2, relief="sunken")
+        p2_txt.insert("1.0", GEMINI_DIALOGUE_PORTRAIT_PROMPT)
+        p2_txt.configure(state="disabled")
+        p2_txt.pack(fill="x", pady=(0, 6))
+
+        btn_row2 = tk.Frame(sec2, bg=BG_CARD)
+        btn_row2.pack(fill="x")
+        tk.Button(
+            btn_row2,
+            text="📋 Copiar Prompt 2 (Retrato da Caixa de Diálogo)",
+            command=self.copy_gemini_dialogue_prompt,
+            bg=BTN_BLUE,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left")
+
+        tk.Button(
+            btn_row2,
+            text="🖼️ Já gerei! Importar Retrato de Diálogo Agora",
+            command=lambda: [win.destroy(), self.import_dialog_portrait_for_current()],
+            bg=BTN_GREEN,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="right")
+
+        tk.Button(
+            outer,
+            text="✖ Fechar Guia",
+            command=win.destroy,
+            bg=BTN_RED,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=16,
+            pady=4,
+            cursor="hand2",
+        ).pack( pady=(8, 0))
+
     def _get_selected_grid_dims(self):
         val = self.grid_layout_var.get()
         if "4x4" in val:
@@ -910,6 +1118,8 @@ class StardewDesktopPetApp:
             gravity_enabled=self.gravity_var.get(),
         )
         pet.on_portrait_updated_callback = lambda rec: self._refresh_library_grid()
+        pet.on_open_guide_callback = self.open_gemini_guide_window
+        pet._build_context_menu()
         self.active_pets[record.avatar_id] = pet
         self._refresh_library_grid()
 
