@@ -439,14 +439,12 @@ def build_animations_from_4x6_image(
             _draw_scaled_props(cell_copy, act_name, col_idx)
             full_sheet.paste(cell_copy, (col_idx * IMPORT_CELL_W, row_idx * IMPORT_CELL_H))
 
-    # Construir Retrato 64x64 em moldura de diálogo do Stardew Valley a partir do busto frontal
+    # Construir Retrato 64x64 em moldura de diálogo procedural a partir do busto frontal
     portrait = Image.new("RGBA", (64, 64), (72, 40, 20, 255))
     inner = Image.new("RGBA", (60, 60), (217, 158, 91, 255))
-    bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "stardew_vanilla", "background.png")
-    if os.path.exists(bg_path):
-        bg = Image.open(bg_path).convert("RGBA").crop((0, 0, 128, 128)).resize((56, 56), Image.Resampling.NEAREST)
-    else:
-        bg = Image.new("RGBA", (56, 56), (205, 232, 248, 255))
+    bg = Image.new("RGBA", (56, 56), (205, 232, 248, 255))
+    draw_bg = ImageDraw.Draw(bg)
+    draw_bg.rectangle([0, 38, 56, 56], fill=(115, 185, 95, 255))
     # Recortar busto (cabeça + colar + ombros) do primeiro quadro frontal
     bust_crop = idle_base.crop((6, 10, 42, 46)).resize((56, 56), Image.Resampling.NEAREST)
     portrait.paste(inner, (2, 2))

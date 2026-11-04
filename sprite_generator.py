@@ -1,23 +1,17 @@
 """
-Renderizador Oficial em Camadas do Stardew Valley (16x32 base dentro de célula 24x36).
-Monta o personagem usando as folhas originais do jogo:
-- farmer_base.png / farmer_girl_base.png
-- skinColors.png
-- hairstyles.png / hairstyles2.png
-- shirts.png
-- pants.png
-- accessories.png
+Gerador Procedural 100% Autoral de Sprites em Pixel Art (16x32 dentro de célula 24x36).
+Projeto de fã independente inspirado na estética de jogos de fazenda 16-bit (sem uso de
+qualquer arquivo gráfico proprietário externo).
 """
 
 import os
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List
 import numpy as np
 from PIL import Image, ImageDraw, ImageOps
 from photo_analyzer import (
     AvatarConfig,
     hex_to_rgb,
     HAIR_STYLE_TO_SDV_INDEX,
-    VANILLA_DIR,
 )
 
 
@@ -49,51 +43,6 @@ ANIMATION_LABELS: Dict[str, str] = {
 }
 
 
-class _StardewAssetsCache:
-    """Cache em memória das folhas de sprites originais do Stardew Valley."""
-
-    def __init__(self):
-        self.loaded = False
-        self.male_base: Optional[Image.Image] = None
-        self.female_base: Optional[Image.Image] = None
-        self.hairs1: Optional[Image.Image] = None
-        self.hairs2: Optional[Image.Image] = None
-        self.accessories: Optional[Image.Image] = None
-        self.shirts: Optional[Image.Image] = None
-        self.pants: Optional[Image.Image] = None
-        self.skins: Optional[Image.Image] = None
-        self.palette_refs: Dict[str, Tuple[int, int, int, int]] = {}
-
-    def ensure_loaded(self):
-        if self.loaded:
-            return
-        self.male_base = Image.open(os.path.join(VANILLA_DIR, "farmer_base.png")).convert("RGBA")
-        self.female_base = Image.open(os.path.join(VANILLA_DIR, "farmer_girl_base.png")).convert("RGBA")
-        self.hairs1 = Image.open(os.path.join(VANILLA_DIR, "hairstyles.png")).convert("RGBA")
-        self.hairs2 = Image.open(os.path.join(VANILLA_DIR, "hairstyles2.png")).convert("RGBA")
-        self.accessories = Image.open(os.path.join(VANILLA_DIR, "accessories.png")).convert("RGBA")
-        self.shirts = Image.open(os.path.join(VANILLA_DIR, "shirts.png")).convert("RGBA")
-        self.pants = Image.open(os.path.join(VANILLA_DIR, "pants.png")).convert("RGBA")
-        self.skins = Image.open(os.path.join(VANILLA_DIR, "skinColors.png")).convert("RGBA")
-
-        # Extrair as cores-chave de substituição na linha 0, coluna 16 (índices 256..277) de farmer_base.png
-        arr = np.array(self.male_base).reshape(-1, 4)
-        self.palette_refs = {
-            "sleeve_dark": tuple(int(v) for v in arr[256]),
-            "sleeve_med": tuple(int(v) for v in arr[257]),
-            "sleeve_light": tuple(int(v) for v in arr[258]),
-            "skin_dark": tuple(int(v) for v in arr[260]),
-            "skin_med": tuple(int(v) for v in arr[261]),
-            "skin_light": tuple(int(v) for v in arr[262]),
-            "eye_bright": tuple(int(v) for v in arr[276]),
-            "eye_dark": tuple(int(v) for v in arr[277]),
-        }
-        self.loaded = True
-
-
-_CACHE = _StardewAssetsCache()
-
-
 def put_px(img: Image.Image, x: int, y: int, color: Tuple[int, int, int, int]):
     if 0 <= x < img.width and 0 <= y < img.height:
         img.putpixel((x, y), color)
@@ -105,244 +54,308 @@ def fill_rect(img: Image.Image, x1: int, y1: int, w: int, h: int, color: Tuple[i
             put_px(img, xx, yy, color)
 
 
-def tint_stardew_sprite(img: Image.Image, target_rgb: Tuple[int, int, int]) -> Image.Image:
-    """
-    Aplica tingimento ao estilo Multiplicação / Colorize do Stardew Valley,
-    preservando contornos escuros, sombras e brilhos originais da pixel art.
-    """
-    arr = np.array(img, dtype=np.float32)
-    alpha = arr[:, :, 3:4]
-    # No Stardew Valley, os assets de cabelo/calça são desenhados em tons de cinza (0..255)
-    # Multiplicar pelo target_rgb normalizado (com leve boost para preservar os highlights)
-    r, g, b = target_rgb
-    lum = (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]) / 255.0
-    # Curva suave para manter o contorno escuro de ConcernedApe bem definido
-    contrast_lum = np.power(lum, 0.92)
-    out = np.zeros_like(arr)
-    out[:, :, 0] = np.clip(contrast_lum * r * 1.18, 0, 255)
-    out[:, :, 1] = np.clip(contrast_lum * g * 1.18, 0, 255)
-    out[:, :, 2] = np.clip(contrast_lum * b * 1.18, 0, 255)
-    out[:, :, 3] = alpha[:, :, 0]
-    return Image.fromarray(out.astype(np.uint8), "RGBA")
-
-
-def _get_skin_3tones(cfg: AvatarConfig) -> Tuple[Tuple[int, int, int, int], Tuple[int, int, int, int], Tuple[int, int, int, int]]:
-    """Retorna os 3 tons de pele (escuro/contorno, médio, claro) a partir de skinColors.png ou cor customizada."""
-    _CACHE.ensure_loaded()
-    skins_img = _CACHE.skins
-    idx = max(0, min(skins_img.height - 1, int(cfg.skin_index)))
-
-    # Verificar se a cor customizada bate com o tom oficial ou se o usuário escolheu outra cor no seletor
-    official_light = skins_img.getpixel((2, idx))[:3]
-    user_rgb = hex_to_rgb(cfg.skin_color)
-    if sum(abs(a - b) for a, b in zip(official_light, user_rgb)) <= 18:
-        s_dark = skins_img.getpixel((0, idx))
-        s_med = skins_img.getpixel((1, idx))
-        s_light = skins_img.getpixel((2, idx))
-        return (s_dark, s_med, s_light)
-
-    # Derivar 3 tons ao estilo Stardew Valley (sombra avermelhada/quente) a partir da cor escolhida
-    r, g, b = user_rgb
-    s_light = (r, g, b, 255)
-    s_med = (max(0, int(r * 0.86)), max(0, int(g * 0.72)), max(0, int(b * 0.68)), 255)
-    s_dark = (max(0, int(r * 0.52)), max(0, int(g * 0.25)), max(0, int(b * 0.32)), 255)
-    return (s_dark, s_med, s_light)
-
-
-def _recolor_base_patch(
-    patch: Image.Image,
-    skin_tones: Tuple[Tuple[int, int, int, int], Tuple[int, int, int, int], Tuple[int, int, int, int]],
-    sleeve_rgb: Tuple[int, int, int],
-    eye_rgb: Tuple[int, int, int],
-) -> Image.Image:
-    """Substitui os canais de pele, mangas e olhos em um recorte 16x32 de farmer_base.png."""
-    _CACHE.ensure_loaded()
-    refs = _CACHE.palette_refs
-    s_dark, s_med, s_light = skin_tones
-
-    sr, sg, sb = sleeve_rgb
-    sl_light = (sr, sg, sb, 255)
-    sl_med = (max(0, int(sr * 0.78)), max(0, int(sg * 0.75)), max(0, int(sb * 0.75)), 255)
-    sl_dark = (max(0, int(sr * 0.48)), max(0, int(sg * 0.44)), max(0, int(sb * 0.44)), 255)
-
-    er, eg, eb = eye_rgb
-    e_bright = (er, eg, eb, 255)
-    e_dark = (max(0, er - 70), max(0, eg - 70), max(0, eb - 60), 255)
-
-    arr = np.array(patch)
-    out = arr.copy()
-
-    replacements = [
-        (refs["skin_dark"], s_dark),
-        (refs["skin_med"], s_med),
-        (refs["skin_light"], s_light),
-        (refs["sleeve_dark"], sl_dark),
-        (refs["sleeve_med"], sl_med),
-        (refs["sleeve_light"], sl_light),
-        (refs["eye_bright"], e_bright),
-        (refs["eye_dark"], e_dark),
-    ]
-    for src_rgba, dst_rgba in replacements:
-        mask = (
-            (arr[:, :, 0] == src_rgba[0])
-            & (arr[:, :, 1] == src_rgba[1])
-            & (arr[:, :, 2] == src_rgba[2])
-            & (arr[:, :, 3] > 0)
+def _shade_rgba(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, int, int]:
+    r, g, b = rgb
+    if factor < 1.0:
+        return (
+            max(0, int(r * factor)),
+            max(0, int(g * (factor * 0.94))),
+            max(0, int(b * (factor * 0.90))),
+            255,
         )
-        out[mask] = dst_rgba
-
-    return Image.fromarray(out, "RGBA")
-
-
-def _resolve_shirt_index(cfg: AvatarConfig) -> int:
-    """Determina o índice da camisa oficial em shirts.png ou mapeia pelo estilo de roupa."""
-    outfit_defaults = {
-        "jardineira": 0,   # Clássica com suspensórios/macacão
-        "camiseta": 13,    # Camiseta limpa
-        "xadrez": 12,      # Camisa listrada/xadrez
-        "moletom": 21,     # Moletom aconchegante
-        "jaqueta": 18,     # Jaqueta aberta com camisa interna
-    }
-    if cfg.shirt_index > 0:
-        return min(111, cfg.shirt_index)
-    return outfit_defaults.get(cfg.outfit_style, 0)
+    return (
+        min(255, int(r + (255 - r) * (factor - 1.0))),
+        min(255, int(g + (255 - g) * (factor - 1.0))),
+        min(255, int(b + (255 - b) * (factor - 1.0) * 0.85)),
+        255,
+    )
 
 
-def _resolve_hair_index(cfg: AvatarConfig) -> int:
-    if cfg.hair_style == "careca":
-        return -1
-    if cfg.hair_index >= 0 and cfg.hair_style == "custom":
-        return cfg.hair_index
-    return HAIR_STYLE_TO_SDV_INDEX.get(cfg.hair_style, cfg.hair_index)
+def _warm_outline(rgb: Tuple[int, int, int]) -> Tuple[int, int, int, int]:
+    r, g, b = rgb
+    return (
+        max(18, int(r * 0.36)),
+        max(12, int(g * 0.26)),
+        max(16, int(b * 0.30)),
+        255,
+    )
 
 
-def _render_sdv_16x32(
+def _render_procedural_16x32(
     cfg: AvatarConfig,
     dir_row: int,
-    base_col: int,
-    arm_col: int,
+    step_phase: int,
+    arms_up: bool = False,
     bob_px: int = 0,
     blink: bool = False,
     flip_x: bool = False,
 ) -> Image.Image:
     """
-    Monta um quadro 16x32 autêntico do Stardew Valley seguindo a hierarquia exata do FarmerRenderer:
-    1. Corpo Base (farmer_base.png / farmer_girl_base.png)
-    2. Calça (pants.png)
-    3. Camisa (shirts.png 8x8)
-    4. Barba e/ou Óculos (accessories.png 16x16)
-    5. Cabelo (hairstyles.png / hairstyles2.png 16x32)
-    6. Chapéu
-    7. Braços (farmer_base.png colunas 6..17)
+    Desenha proceduralmente um personagem Chibi 16x32 100% original (zero arquivos externos),
+    suportando tons de pele, estilos de cabelo, barba, óculos, roupas e animações de caminhada.
     """
-    _CACHE.ensure_loaded()
-    base_sheet = _CACHE.male_base if cfg.is_male else _CACHE.female_base
-    female_offset = 0 if cfg.is_male else 1
-
-    skin_tones = _get_skin_3tones(cfg)
-    eye_rgb = hex_to_rgb(cfg.eye_color)
-    hair_rgb = hex_to_rgb(cfg.hair_color)
-    pants_rgb = hex_to_rgb(cfg.pants_color)
-    shirt_rgb = hex_to_rgb(cfg.shirt_color)
-
-    # 1. Recortar camisa (8x8) original de shirts.png (mantendo as cores e detalhes multi-coloridos de ConcernedApe)
-    shirt_idx = _resolve_shirt_index(cfg)
-    sx = (shirt_idx % 16) * 8
-    sy = (shirt_idx // 16) * 32 + (dir_row * 8)
-    shirt_crop = _CACHE.shirts.crop((sx, sy, sx + 8, sy + 8))
-    # Extrair a cor predominante da camisa para pintar as mangas dos braços
-    s_arr = np.array(shirt_crop)
-    opaque_px = s_arr[s_arr[:, :, 3] > 128][:, :3]
-    if len(opaque_px) > 0:
-        sleeve_rgb = tuple(int(v) for v in np.median(opaque_px, axis=0))
-    else:
-        sleeve_rgb = shirt_rgb
-    shirt_tinted = shirt_crop
-
-    # 2. Corpo Base (16x32)
-    bx = base_col * 16
-    by = dir_row * 32
-    raw_body = base_sheet.crop((bx, by, bx + 16, by + 32))
-    body_frame = _recolor_base_patch(raw_body, skin_tones, sleeve_rgb, eye_rgb)
-
-    # Piscar os olhos (fechar pálpebra com tom de pele médio/escuro quando blink=True)
-    if blink and dir_row == 0:
-        s_dark, s_med, s_light = skin_tones
-        ey = 10 + female_offset + bob_px
-        for ex in (5, 6, 9, 10):
-            put_px(body_frame, ex, ey, s_light)
-            put_px(body_frame, ex, ey + 1, s_dark)
-
     canvas = Image.new("RGBA", (16, 32), (0, 0, 0, 0))
-    canvas.paste(body_frame, (0, 0), body_frame)
 
-    # 3. Calça (16x32 de pants.png)
-    p_type = max(0, min(3, cfg.pants_index))
-    px_origin = (p_type % 10) * 192 + (0 if cfg.is_male else 96)
-    py_origin = (p_type // 10) * 688
-    pant_crop = _CACHE.pants.crop((px_origin + bx, py_origin + by, px_origin + bx + 16, py_origin + by + 32))
-    pant_tinted = tint_stardew_sprite(pant_crop, pants_rgb)
-    canvas.paste(pant_tinted, (0, 0), pant_tinted)
+    skin_rgb = hex_to_rgb(cfg.skin_color)
+    s_base = _shade_rgba(skin_rgb, 1.0)
+    s_hi = _shade_rgba(skin_rgb, 1.12)
+    s_sh = _shade_rgba(skin_rgb, 0.82)
+    s_out = _warm_outline(skin_rgb)
 
-    # 4. Camisa (8x8 posicionada em X=4, Y=15 + female_offset + bob_px)
-    shirt_y = 15 + female_offset + bob_px
-    canvas.paste(shirt_tinted, (4, shirt_y), shirt_tinted)
+    hair_rgb = hex_to_rgb(cfg.hair_color)
+    h_base = _shade_rgba(hair_rgb, 1.0)
+    h_hi = _shade_rgba(hair_rgb, 1.22)
+    h_sh = _shade_rgba(hair_rgb, 0.75)
+    h_out = _warm_outline(hair_rgb)
 
-    # 5. Acessórios Faciais (Barba e Óculos de accessories.png)
-    # Permitimos combinar barba E óculos simultaneamente!
-    acc_indices_to_draw = []
-    if cfg.beard_style == "barba_cheia":
-        acc_indices_to_draw.append(0)
-    elif cfg.beard_style == "cavanhaque":
-        acc_indices_to_draw.append(1)
-    elif cfg.beard_style == "bigode":
-        acc_indices_to_draw.append(2)
+    eye_rgb = hex_to_rgb(cfg.eye_color)
+    eye_c = (eye_rgb[0], eye_rgb[1], eye_rgb[2], 255)
+    eye_dark = _shade_rgba(eye_rgb, 0.55)
+    white = (250, 246, 240, 255)
 
-    if cfg.glasses_style == "quadrado":
-        acc_indices_to_draw.append(8)
-    elif cfg.glasses_style == "redondo":
-        acc_indices_to_draw.append(10)
-    elif cfg.glasses_style == "escuro":
-        acc_indices_to_draw.append(12)
+    shirt_rgb = hex_to_rgb(cfg.shirt_color)
+    sh_base = _shade_rgba(shirt_rgb, 1.0)
+    sh_hi = _shade_rgba(shirt_rgb, 1.16)
+    sh_sh = _shade_rgba(shirt_rgb, 0.78)
+    sh_out = _warm_outline(shirt_rgb)
 
-    if cfg.accessory_index >= 0 and cfg.accessory_index not in acc_indices_to_draw:
-        acc_indices_to_draw.append(cfg.accessory_index)
+    pants_rgb = hex_to_rgb(cfg.pants_color)
+    p_base = _shade_rgba(pants_rgb, 1.0)
+    p_sh = _shade_rgba(pants_rgb, 0.76)
+    p_out = _warm_outline(pants_rgb)
 
-    if dir_row in (0, 1):  # Acessórios faciais aparecem de frente (0) e de perfil (1)
-        for acc_id in acc_indices_to_draw:
-            if 0 <= acc_id <= 18:
-                ax = (acc_id % 8) * 16
-                ay = (acc_id // 8) * 32 + (dir_row * 16)
-                acc_crop = _CACHE.accessories.crop((ax, ay, ax + 16, ay + 16))
-                if acc_id <= 5:  # Índices 0..5 são barbas/bigodes -> recebem a cor do cabelo
-                    acc_crop = tint_stardew_sprite(acc_crop, hair_rgb)
-                acc_y = (1 if cfg.is_male else 2) + bob_px
-                canvas.paste(acc_crop, (0, acc_y), acc_crop)
+    boots_base = (86, 48, 28, 255)
+    boots_hi = (118, 68, 40, 255)
+    boots_out = (42, 20, 12, 255)
 
-    # 6. Cabelo (16x32 de hairstyles.png ou hairstyles2.png)
-    hair_id = _resolve_hair_index(cfg)
-    if hair_id >= 0:
-        if hair_id < 56:
-            h_sheet = _CACHE.hairs1
-            local_id = hair_id
+    by = bob_px
+
+    # ==================== 1. CABEÇA E ROSTO (Y=4..13) ====================
+    for y in range(4, 14):
+        for x in range(4, 12):
+            if y == 13 and x in (4, 11):
+                continue
+            if y in (4, 5):
+                c = s_hi
+            elif y >= 11 or x in (4, 11):
+                c = s_sh
+            else:
+                c = s_base
+            put_px(canvas, x, y + by, c)
+
+    for x in range(5, 11):
+        put_px(canvas, x, 13 + by, s_out)
+    put_px(canvas, 4, 12 + by, s_out)
+    put_px(canvas, 11, 12 + by, s_out)
+
+    # Orelhas
+    if dir_row == 0:
+        put_px(canvas, 3, 8 + by, s_sh)
+        put_px(canvas, 3, 9 + by, s_out)
+        put_px(canvas, 12, 8 + by, s_sh)
+        put_px(canvas, 12, 9 + by, s_out)
+    else:
+        put_px(canvas, 5, 8 + by, s_sh)
+        put_px(canvas, 5, 9 + by, s_out)
+        put_px(canvas, 12, 9 + by, s_base)
+        put_px(canvas, 12, 10 + by, s_out)
+
+    # ==================== 2. OLHOS (Y=8..9) ====================
+    if dir_row == 0:
+        put_px(canvas, 5, 7 + by, h_out)
+        put_px(canvas, 6, 7 + by, h_sh)
+        put_px(canvas, 9, 7 + by, h_sh)
+        put_px(canvas, 10, 7 + by, h_out)
+        if blink:
+            for ex in (5, 6, 9, 10):
+                put_px(canvas, ex, 8 + by, s_base)
+                put_px(canvas, ex, 9 + by, s_out)
         else:
-            h_sheet = _CACHE.hairs2
-            local_id = hair_id - 56
-        hx = (local_id % 8) * 16
-        hy = (local_id // 8) * 96 + (dir_row * 32)
-        if hy + 32 <= h_sheet.height:
-            hair_crop = h_sheet.crop((hx, hy, hx + 16, hy + 32))
-            hair_tinted = tint_stardew_sprite(hair_crop, hair_rgb)
-            hair_y_off = (0 if hair_id >= 16 else 1) + female_offset + bob_px
-            canvas.paste(hair_tinted, (0, hair_y_off), hair_tinted)
+            put_px(canvas, 5, 8 + by, white)
+            put_px(canvas, 5, 9 + by, s_sh)
+            put_px(canvas, 6, 8 + by, eye_dark)
+            put_px(canvas, 6, 9 + by, eye_c)
+            put_px(canvas, 9, 8 + by, eye_dark)
+            put_px(canvas, 9, 9 + by, eye_c)
+            put_px(canvas, 10, 8 + by, white)
+            put_px(canvas, 10, 9 + by, s_sh)
+    else:
+        put_px(canvas, 9, 7 + by, h_sh)
+        put_px(canvas, 10, 7 + by, h_out)
+        put_px(canvas, 9, 8 + by, white)
+        put_px(canvas, 9, 9 + by, s_sh)
+        put_px(canvas, 10, 8 + by, eye_dark)
+        put_px(canvas, 10, 9 + by, eye_c)
 
-    # 7. Braços Animados (Colunas 6..17 de farmer_base.png)
-    ax_col = arm_col * 16
-    raw_arms = base_sheet.crop((ax_col, by, ax_col + 16, by + 32))
-    arms_frame = _recolor_base_patch(raw_arms, skin_tones, sleeve_rgb, eye_rgb)
-    canvas.paste(arms_frame, (0, 0), arms_frame)
+    # ==================== 3. BARBA / BIGODE ====================
+    if cfg.beard_style != "sem_barba":
+        if dir_row == 0:
+            for bx_p in range(6, 10):
+                put_px(canvas, bx_p, 11 + by, h_base)
+            if cfg.beard_style in ("cavanhaque", "barba_cheia"):
+                for bx_p in range(6, 10):
+                    put_px(canvas, bx_p, 12 + by, h_sh)
+                    put_px(canvas, bx_p, 13 + by, h_out)
+            if cfg.beard_style == "barba_cheia":
+                for bx_p in (4, 5, 10, 11):
+                    put_px(canvas, bx_p, 10 + by, h_base)
+                    put_px(canvas, bx_p, 11 + by, h_sh)
+                    put_px(canvas, bx_p, 12 + by, h_out)
+        else:
+            put_px(canvas, 10, 11 + by, h_base)
+            put_px(canvas, 11, 11 + by, h_out)
+            if cfg.beard_style in ("cavanhaque", "barba_cheia"):
+                for bx_p in range(8, 12):
+                    put_px(canvas, bx_p, 12 + by, h_sh)
+                    put_px(canvas, bx_p, 13 + by, h_out)
 
-    # Espelhar horizontalmente para caminhada para a esquerda (exatamente como o motor do Stardew Valley faz)
+    # ==================== 4. ÓCULOS ====================
+    if cfg.glasses_style != "nenhum":
+        g_frame = (38, 34, 44, 255)
+        g_lens = (30, 36, 46, 235) if cfg.glasses_style == "escuro" else (185, 225, 250, 150)
+        if dir_row == 0:
+            for gx in range(4, 12):
+                put_px(canvas, gx, 7 + by, g_frame)
+            for gx in (4, 7, 8, 11):
+                put_px(canvas, gx, 8 + by, g_frame)
+                put_px(canvas, gx, 9 + by, g_frame)
+            for gx in (5, 6, 9, 10):
+                put_px(canvas, gx, 10 + by, g_frame)
+                if cfg.glasses_style == "escuro":
+                    put_px(canvas, gx, 8 + by, g_lens)
+                    put_px(canvas, gx, 9 + by, g_lens)
+        else:
+            for gx in range(6, 12):
+                put_px(canvas, gx, 7 + by, g_frame)
+            put_px(canvas, 8, 8 + by, g_frame)
+            put_px(canvas, 11, 8 + by, g_frame)
+            put_px(canvas, 9, 10 + by, g_frame)
+            put_px(canvas, 10, 10 + by, g_frame)
+
+    # ==================== 5. CABELO PROCEDURAL ====================
+    style = cfg.hair_style
+    if style == "custom":
+        idx = cfg.hair_index % 6
+        style = ["curto", "topete", "medio", "longo", "cacheado", "coque"][idx]
+
+    if style != "careca":
+        top_start = 1 if style in ("topete", "cacheado", "coque") else 2
+        for y in range(top_start, 7):
+            for x in range(3, 13):
+                if y == top_start and x in (3, 12):
+                    continue
+                if y == 6 and x in (5, 6, 9, 10) and style != "cacheado":
+                    continue
+                if y == top_start or x in (3, 12):
+                    c = h_out
+                elif y == top_start + 1 and 5 <= x <= 10:
+                    c = h_hi
+                elif y >= 5:
+                    c = h_sh
+                else:
+                    c = h_base
+                put_px(canvas, x, y + by, c)
+
+        if style == "cacheado":
+            for cx_p, cy_p in [(2, 4), (2, 5), (2, 6), (2, 7), (13, 4), (13, 5), (13, 6), (13, 7), (4, 1), (7, 1), (10, 1)]:
+                put_px(canvas, cx_p, cy_p + by, h_out if cx_p in (2, 13) else h_base)
+        elif style == "longo":
+            max_hy = 16
+            for y in range(5, max_hy):
+                for lx in (2, 3, 12, 13):
+                    if dir_row == 1 and lx in (12, 13) and y > 8:
+                        continue
+                    put_px(canvas, lx, y + by, h_out if lx in (2, 13) or y == max_hy - 1 else h_base)
+        elif style == "medio":
+            for y in range(5, 11):
+                for lx in (3, 12):
+                    put_px(canvas, lx, y + by, h_out if y == 10 else h_sh)
+        elif style == "coque":
+            for y in range(0, 3):
+                for x in range(6, 10):
+                    put_px(canvas, x, y + by, h_out if y == 0 or x in (6, 9) else h_hi)
+
+        if dir_row == 1:
+            # Nuca coberta pelo cabelo no perfil
+            for y in range(4, 11):
+                for x in range(3, 7):
+                    put_px(canvas, x, y + by, h_out if x == 3 else (h_sh if x == 4 else h_base))
+
+    # ==================== 6. TRONCO E ROUPA (Y=14..21) ====================
+    t_left, t_right = (4, 12) if dir_row == 0 else (5, 11)
+    for y in range(14, 22):
+        for x in range(t_left, t_right):
+            if x in (t_left, t_right - 1) or y == 21:
+                c = sh_out
+            elif y == 14 and x in (7, 8):
+                c = s_sh
+            elif cfg.outfit_style == "jardineira" and y >= 17 and x in (5, 6, 7, 8, 9, 10):
+                c = p_base if y < 20 else p_sh
+            elif cfg.outfit_style == "jardineira" and y in (15, 16) and x in (5, 10):
+                c = p_base
+            elif cfg.outfit_style == "xadrez" and (x + y) % 2 == 0:
+                c = sh_sh
+            elif cfg.outfit_style == "jaqueta" and x in (7, 8):
+                c = white
+            else:
+                c = sh_hi if y in (15, 16) and x in (6, 9) else sh_base
+            put_px(canvas, x, y + by, c)
+
+    # ==================== 7. PERNAS E PASSOS (Y=22..30) ====================
+    if dir_row == 0 or step_phase == 0:
+        p_left, p_right = (4, 12) if dir_row == 0 else (5, 11)
+        for y in range(22, 28):
+            for x in range(p_left, p_right):
+                if x in (p_left, p_right - 1) or (dir_row == 0 and x in (7, 8) and y >= 24):
+                    put_px(canvas, x, y, p_out)
+                else:
+                    put_px(canvas, x, y, p_base if x % 2 == 1 else p_sh)
+        for x in range(p_left, p_right):
+            put_px(canvas, x, 28, boots_out if x in (p_left, p_right - 1) else boots_hi)
+            put_px(canvas, x, 29, boots_out if x in (p_left, p_right - 1) else boots_base)
+            put_px(canvas, x, 30, boots_out)
+    else:
+        # Pernas abertas caminhando em perfil
+        front_lx = 9 if step_phase == 1 else 4
+        back_lx = 4 if step_phase == 1 else 9
+        for lx_start, ly_off in [(back_lx, 0), (front_lx, -1)]:
+            for y in range(22, 28):
+                for dx in range(4):
+                    px_x = lx_start + dx
+                    py_y = y + ly_off
+                    put_px(canvas, px_x, py_y, p_out if dx in (0, 3) else p_base)
+            for dx in range(4):
+                px_x = lx_start + dx
+                put_px(canvas, px_x, 28 + ly_off, boots_out if dx in (0, 3) else boots_hi)
+                put_px(canvas, px_x, 29 + ly_off, boots_base)
+                put_px(canvas, px_x, 30 + ly_off, boots_out)
+
+    # ==================== 8. BRAÇOS ANIMADOS ====================
+    if dir_row == 0:
+        ay_start = 10 if arms_up else 15
+        for dy in range(6):
+            y = ay_start + dy + by
+            if dy < 4:
+                put_px(canvas, 2, y, sh_out)
+                put_px(canvas, 3, y, sh_base)
+                put_px(canvas, 12, y, sh_base)
+                put_px(canvas, 13, y, sh_out)
+            else:
+                put_px(canvas, 2, y, s_sh if dy == 4 else s_out)
+                put_px(canvas, 3, y, s_base if dy == 4 else s_out)
+                put_px(canvas, 12, y, s_base if dy == 4 else s_out)
+                put_px(canvas, 13, y, s_sh if dy == 4 else s_out)
+    else:
+        arm_x = 7 + (2 if step_phase == 1 else (-2 if step_phase == 2 else 0))
+        for dy in range(6):
+            y = 15 + dy + by
+            if dy < 4:
+                put_px(canvas, arm_x, y, sh_out)
+                put_px(canvas, arm_x + 1, y, sh_base)
+            else:
+                put_px(canvas, arm_x, y, s_base if dy == 4 else s_out)
+                put_px(canvas, arm_x + 1, y, s_sh if dy == 4 else s_out)
+
     if flip_x:
         canvas = ImageOps.mirror(canvas)
 
@@ -355,15 +368,14 @@ def draw_character_frame(
     frame_idx: int,
 ) -> Image.Image:
     """
-    Desenha um quadro 24x36 contendo o personagem autêntico 16x32 do Stardew Valley
+    Desenha um quadro 24x36 contendo o personagem procedural 16x32
     mais chapéu e ferramentas/efeitos das ações na área de trabalho.
     """
     canvas = Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0))
 
-    # Mapear ação e frame_idx (0..3) para as poses reais de farmer_base.png
     dir_row = 0
-    base_col = 0
-    arm_col = 6
+    step_phase = 0
+    arms_up = False
     bob_px = 0
     blink = False
     flip_x = False
@@ -371,57 +383,42 @@ def draw_character_frame(
 
     if action == "idle":
         dir_row = 0
-        base_col = 0
-        arm_col = 6
-        bob_px = 0
+        bob_px = 1 if frame_idx in (1, 2) else 0
         blink = (frame_idx == 3)
     elif action == "walk_right":
         dir_row = 1
-        # Ciclo oficial de caminhada do Stardew Valley: Col 0 -> Col 1 -> Col 0 -> Col 2
         walk_seq = [0, 1, 0, 2]
-        base_col = walk_seq[frame_idx % 4]
-        arm_col = 6 + base_col
-        bob_px = 1 if base_col in (1, 2) else 0
+        step_phase = walk_seq[frame_idx % 4]
+        bob_px = 1 if step_phase in (1, 2) else 0
     elif action == "walk_left":
         dir_row = 1
         walk_seq = [0, 1, 0, 2]
-        base_col = walk_seq[frame_idx % 4]
-        arm_col = 6 + base_col
-        bob_px = 1 if base_col in (1, 2) else 0
+        step_phase = walk_seq[frame_idx % 4]
+        bob_px = 1 if step_phase in (1, 2) else 0
         flip_x = True
     elif action == "water_crops":
         dir_row = 1
-        # Pose de usar ferramenta lateral (Col 3/4 de Row 1)
-        base_col = 3 if frame_idx in (1, 2) else 0
-        arm_col = 10 if frame_idx in (1, 2) else 6
+        step_phase = 1 if frame_idx in (1, 2) else 0
         bob_px = 1 if frame_idx in (1, 2) else 0
     elif action == "coffee_break":
         dir_row = 0
-        # Pose segurando item / bebendo (braços levantados cols 12/13)
-        base_col = 0
-        arm_col = 12 if frame_idx in (1, 2) else 6
+        arms_up = frame_idx in (1, 2)
     elif action == "fishing":
         dir_row = 1
-        base_col = 3 if frame_idx == 3 else 0
-        arm_col = 10 if frame_idx in (1, 2, 3) else 6
+        step_phase = 1 if frame_idx == 3 else 0
     elif action == "happy_dance":
         dir_row = 0
-        # Pose comemorando com braços erguidos (Col 3 + Arm 14)
-        base_col = 3 if frame_idx in (1, 3) else 0
-        arm_col = 14 if frame_idx in (1, 3) else 6
+        arms_up = frame_idx in (1, 3)
         jump_y = -2 if frame_idx in (1, 3) else 0
     elif action == "sleep_sit":
         dir_row = 0
-        base_col = 0
-        arm_col = 6
-        bob_px = 0
         blink = True
 
-    sdv_16x32 = _render_sdv_16x32(
+    char_16x32 = _render_procedural_16x32(
         cfg=cfg,
         dir_row=dir_row,
-        base_col=base_col,
-        arm_col=arm_col,
+        step_phase=step_phase,
+        arms_up=arms_up,
         bob_px=bob_px,
         blink=blink,
         flip_x=flip_x,
@@ -430,15 +427,13 @@ def draw_character_frame(
     ox = 4
     oy = 3 + jump_y
 
-    # Sombra oval suave no chão (estilo Stardew Valley)
     for sx in range(ox + 3, ox + 13):
         put_px(canvas, sx, 34, (20, 15, 25, 95))
     for sx in range(ox + 4, ox + 12):
         put_px(canvas, sx, 33, (20, 15, 25, 65))
 
-    canvas.paste(sdv_16x32, (ox, oy), sdv_16x32)
+    canvas.paste(char_16x32, (ox, oy), char_16x32)
 
-    # Chapéu / Acessório de Cabeça
     head_top_y = oy + 2 + bob_px
     if cfg.hat_style == "palha":
         straw_out = (110, 68, 24, 255)
@@ -467,7 +462,6 @@ def draw_character_frame(
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             put_px(canvas, fx + dx, fy + dy, (255, 250, 250, 255))
 
-    # Props e Efeitos das Ações Stardew Valley
     torso_y = oy + 15
     if action == "water_crops":
         can_c = (130, 155, 185, 255)
@@ -572,8 +566,7 @@ def extract_animation_frames(sheet: Image.Image, action: str, scale: int = 4) ->
 
 def generate_modular_portrait(cfg: AvatarConfig) -> Image.Image:
     """
-    Gera um retrato 64x64 em pixel art estilo caixa de diálogo do Stardew Valley
-    usando o fundo diurno oficial (background.png) e o busto autêntico do personagem.
+    Gera um retrato 64x64 em pixel art estilo caixa de diálogo procedural (100% original).
     """
     frame_24 = draw_character_frame(cfg, "idle", 0)
     bust = frame_24.crop((4, 2, 20, 20)).resize((56, 56), Image.Resampling.NEAREST)
@@ -581,13 +574,9 @@ def generate_modular_portrait(cfg: AvatarConfig) -> Image.Image:
     portrait = Image.new("RGBA", (64, 64), (72, 40, 20, 255))
     inner = Image.new("RGBA", (60, 60), (217, 158, 91, 255))
 
-    bg_path = os.path.join(VANILLA_DIR, "background.png")
-    if os.path.exists(bg_path):
-        bg = Image.open(bg_path).convert("RGBA").crop((0, 0, 128, 128)).resize((56, 56), Image.Resampling.NEAREST)
-    else:
-        bg = Image.new("RGBA", (56, 56), (205, 232, 248, 255))
-        draw = ImageDraw.Draw(bg)
-        draw.rectangle([0, 40, 56, 56], fill=(115, 185, 95, 255))
+    bg = Image.new("RGBA", (56, 56), (205, 232, 248, 255))
+    draw = ImageDraw.Draw(bg)
+    draw.rectangle([0, 38, 56, 56], fill=(115, 185, 95, 255))
 
     portrait.paste(inner, (2, 2))
     portrait.paste(bg, (4, 4))

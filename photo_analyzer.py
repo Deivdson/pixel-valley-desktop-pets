@@ -125,45 +125,25 @@ def closest_palette_color(rgb: Tuple[int, int, int], palette_list: list) -> str:
 
 
 def match_closest_sdv_skin_index(rgb: Tuple[int, int, int]) -> Tuple[int, str]:
-    """Encontra qual dos 24 tons de pele oficiais de skinColors.png é mais próximo do RGB."""
-    skin_path = os.path.join(VANILLA_DIR, "skinColors.png")
-    if not os.path.exists(skin_path):
-        return 0, "#F9AE89"
-    img = Image.open(skin_path).convert("RGBA")
-    w, h = img.size
+    """Encontra qual dos tons da paleta de pele é mais próximo do RGB amostrado."""
     best_idx = 0
-    best_hex = "#F9AE89"
+    best_hex = STARDEW_SKIN_PALETTE[0][0]
     best_dist = float("inf")
-    for row in range(h):
-        # Coluna 2 (lightest/base) representa o tom principal do rosto em skinColors.png
-        px = img.getpixel((2, row))[:3]
-        d = perceptual_color_dist(rgb, px)
+    for idx, (hex_val, _) in enumerate(STARDEW_SKIN_PALETTE):
+        d = perceptual_color_dist(rgb, hex_to_rgb(hex_val))
         if d < best_dist:
             best_dist = d
-            best_idx = row
-            best_hex = rgb_to_hex(px)
+            best_idx = idx
+            best_hex = hex_val
     return best_idx, best_hex
 
 
 def match_closest_sdv_shirt_index(rgb: Tuple[int, int, int]) -> int:
-    """Encontra a camisa oficial em shirts.png cuja cor predominante mais se aproxima da roupa da foto."""
-    shirts_path = os.path.join(VANILLA_DIR, "shirts.png")
-    if not os.path.exists(shirts_path):
-        return 0
-    img = Image.open(shirts_path).convert("RGBA")
+    """Encontra o índice de camisa procedural cuja cor mais se aproxima da roupa da foto."""
     best_idx = 0
     best_dist = float("inf")
-    # Explorar as primeiras 64 camisas clássicas de shirts.png
-    for idx in range(64):
-        sx = (idx % 16) * 8
-        sy = (idx // 16) * 32
-        crop = img.crop((sx, sy, sx + 8, sy + 8))
-        arr = np.array(crop)
-        opaque = arr[arr[:, :, 3] > 128][:, :3]
-        if len(opaque) == 0:
-            continue
-        med_rgb = tuple(int(v) for v in np.median(opaque, axis=0))
-        d = perceptual_color_dist(rgb, med_rgb)
+    for idx, (hex_val, _) in enumerate(STARDEW_CLOTH_PALETTE):
+        d = perceptual_color_dist(rgb, hex_to_rgb(hex_val))
         if d < best_dist:
             best_dist = d
             best_idx = idx

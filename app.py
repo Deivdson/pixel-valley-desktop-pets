@@ -59,7 +59,7 @@ GEMINI_4X6_PROMPT_TEMPLATE = (
 class StardewDesktopPetApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("🌾 Stardew Valley Desktop Pets — Importador 4x6 (Gemini IA) & Biblioteca de Avatares")
+        self.root.title("🌾 Pixel Valley Desktop Pets — Animador de Sprites 4x6 & Biblioteca (Fan Project)")
         self.root.geometry("1220x810")
         self.root.minsize(1080, 730)
         self.root.configure(bg=BG_WOOD_DARK)
@@ -98,8 +98,8 @@ class StardewDesktopPetApp:
 
         title_lbl = tk.Label(
             header,
-            text="🌾 Stardew Valley Desktop Pets — Animador de Sprites 4x6 (Gemini IA) & Biblioteca",
-            font=("Segoe UI", 15, "bold"),
+            text="🌾 Pixel Valley Desktop Pets — Animador 4x6 & Biblioteca (Projeto de Fã Independente)",
+            font=("Segoe UI", 14, "bold"),
             bg=BG_WOOD_MED,
             fg="#FFF6E0",
         )
