@@ -4,8 +4,11 @@ Editor em Camadas Originais, Biblioteca de Avatares e Motor de Área de Trabalho
 """
 
 import os
+import sys
+import glob
 import json
 import random
+import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 from typing import Dict, Optional, List
@@ -27,6 +30,7 @@ from sprite_generator import (
 from spritesheet_importer import build_animations_from_4x6_image
 from library_manager import AvatarLibrary, AvatarRecord
 from desktop_pet import DesktopPetWindow
+from dialogue_box import StardewDialogueWindow
 
 
 BG_WOOD_DARK = "#5A2E14"
@@ -69,9 +73,11 @@ class StardewDesktopPetApp:
         self.editing_avatar_id: Optional[str] = None
         self.current_source_photo_path: Optional[str] = None
         self.current_photo_portrait: Optional[Image.Image] = None
+        self.current_dialog_portrait: Optional[Image.Image] = None
         self.current_freeform_sheet: Optional[Image.Image] = None
         self.current_config = AvatarConfig(name="Novo Fazendeiro")
         self.render_mode_var = tk.StringVar(value="freeform")
+        self.standalone_dialogues: Dict[str, StardewDialogueWindow] = {}
 
         self.preview_action_key = "idle"
         self.preview_frame_idx = 0
@@ -134,6 +140,19 @@ class StardewDesktopPetApp:
             text="🏠 Recolher Todos",
             command=self.despawn_all_avatars,
             bg=BTN_RED,
+            fg="white",
+            font=("Segoe UI", 10, "bold"),
+            relief="raised",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left", padx=4)
+
+        tk.Button(
+            global_ctrl,
+            text="🔄 Atualizar Programa",
+            command=self.update_and_reload_program,
+            bg=BTN_BLUE,
             fg="white",
             font=("Segoe UI", 10, "bold"),
             relief="raised",
@@ -265,12 +284,13 @@ class StardewDesktopPetApp:
         action_cb.pack(pady=2)
         action_cb.bind("<<ComboboxSelected>>", self._on_change_preview_action)
 
-        # Coluna 2: Retrato 64x64 Pixel Art
+        # Coluna 2: Retrato Caixa de Diálogo Pixel Art
         port_col = tk.Frame(preview_box, bg=BG_CARD)
         port_col.pack(side="left", padx=12)
-        tk.Label(port_col, text="Retrato Diálogo (64x64)", font=("Segoe UI", 9, "bold"), bg=BG_CARD, fg=TEXT_DARK).pack()
-        self.portrait_label = tk.Label(port_col, bg=BG_CARD, bd=2, relief="sunken")
-        self.portrait_label.pack(pady=6)
+        tk.Label(port_col, text="Retrato Caixa de Diálogo", font=("Segoe UI", 9, "bold"), bg=BG_CARD, fg=TEXT_DARK).pack()
+        self.portrait_label = tk.Label(port_col, bg=BG_CARD, bd=2, relief="sunken", cursor="hand2")
+        self.portrait_label.pack(pady=4)
+        self.portrait_label.bind("<Button-1>", lambda e: self.import_dialog_portrait_for_current())
         self.photo_status_lbl = tk.Label(
             port_col,
             text="Retrato Stardew",
@@ -279,6 +299,17 @@ class StardewDesktopPetApp:
             fg="#6E4720",
         )
         self.photo_status_lbl.pack()
+        tk.Button(
+            port_col,
+            text="🖼️ Importar Caixa de Diálogo",
+            command=self.import_dialog_portrait_for_current,
+            bg="#C97A2B",
+            fg="white",
+            font=("Segoe UI", 8, "bold"),
+            padx=6,
+            pady=1,
+            cursor="hand2",
+        ).pack(pady=(2, 0))
 
         # Coluna 3: Folha de Sprites Completa (8x4)
         sheet_col = tk.Frame(preview_box, bg=BG_CARD)
@@ -479,7 +510,7 @@ class StardewDesktopPetApp:
 
         tip_lbl = tk.Label(
             panel,
-            text="💡 Dica: Nos bonequinhos na área de trabalho, arraste com o botão esquerdo, dê duplo clique para fazer carinho ❤️ ou clique com o botão direito para escolher ações!",
+            text="💡 Dica: Nos bonequinhos na área de trabalho, dê DUPLO CLIQUE ou clique em '💬 Interagir / Diálogo' para abrir a Caixa de Diálogo estilo Stardew Valley!",
             font=("Segoe UI", 8, "italic"),
             bg="#EFE0B9",
             fg=TEXT_DARK,
@@ -736,7 +767,10 @@ class StardewDesktopPetApp:
         pil_frames = extract_animation_frames(sheet, self.preview_action_key, scale=4)
         self.preview_frames_tk = [ImageTk.PhotoImage(f) for f in pil_frames]
 
-        if self.current_photo_portrait is not None:
+        if self.current_dialog_portrait is not None:
+            port_img = self.current_dialog_portrait.resize((96, 96), Image.Resampling.NEAREST)
+            self.photo_status_lbl.configure(text="💬 Caixa de Diálogo HD")
+        elif self.current_photo_portrait is not None:
             port_img = self.current_photo_portrait.resize((96, 96), Image.Resampling.NEAREST)
             self.photo_status_lbl.configure(text="🖼️ Retrato do Sprite 4x6")
         else:
@@ -748,6 +782,42 @@ class StardewDesktopPetApp:
         sheet_thumb = sheet.resize((48, 144), Image.Resampling.NEAREST)
         self.sheet_preview_tk = ImageTk.PhotoImage(sheet_thumb)
         self.sheet_label.configure(image=self.sheet_preview_tk)
+
+    def import_dialog_portrait_for_current(self):
+        """Importa uma imagem de caixa de diálogo (ex: 'caixa dialogo deivdson.jpg') para o avatar atual no editor."""
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_dir = downloads_dir if os.path.exists(downloads_dir) else os.path.expanduser("~")
+        file_path = filedialog.askopenfilename(
+            title="Selecione a Imagem da Caixa de Diálogo (ex: caixa dialogo deivdson.jpg)",
+            initialdir=initial_dir,
+            filetypes=[
+                ("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp"),
+                ("Todos os arquivos", "*.*"),
+            ],
+        )
+        if not file_path:
+            return
+        try:
+            img = Image.open(file_path).convert("RGBA")
+            w, h = img.size
+            if w != h:
+                side = min(w, h)
+                img = img.crop(((w - side) // 2, (h - side) // 2, (w + side) // 2, (h + side) // 2))
+            self.current_dialog_portrait = img.resize((256, 256), Image.Resampling.NEAREST)
+            self.current_photo_portrait = self.current_dialog_portrait.resize((64, 64), Image.Resampling.NEAREST)
+
+            if self.editing_avatar_id:
+                for rec in self.library.list_avatars():
+                    if rec.avatar_id == self.editing_avatar_id:
+                        rec.set_dialog_portrait_from_file(file_path)
+                        if rec.avatar_id in self.active_pets:
+                            self.active_pets[rec.avatar_id].reload_from_record(rec)
+                        break
+                self._refresh_library_grid()
+
+            self._refresh_live_preview()
+        except Exception as exc:
+            messagebox.showerror("Erro ao Importar Retrato", f"Não foi possível carregar a imagem:\n{exc}")
 
     def _animate_editor_preview(self):
         if self.preview_frames_tk:
@@ -762,6 +832,7 @@ class StardewDesktopPetApp:
         self.editing_avatar_id = None
         self.current_source_photo_path = None
         self.current_photo_portrait = None
+        self.current_dialog_portrait = None
         self.current_freeform_sheet = None
         self.render_mode_var.set("vanilla_layers")
         self.current_config = AvatarConfig(name="Novo Fazendeiro")
@@ -805,6 +876,7 @@ class StardewDesktopPetApp:
             source_photo_path=self.current_source_photo_path,
             avatar_id=self.editing_avatar_id,
             custom_spritesheet=custom_sheet,
+            dialog_portrait=self.current_dialog_portrait,
         )
         self.editing_avatar_id = record.avatar_id
         self.spawn_avatar(record)
@@ -837,8 +909,17 @@ class StardewDesktopPetApp:
             on_close_callback=self._on_pet_closed,
             gravity_enabled=self.gravity_var.get(),
         )
+        pet.on_portrait_updated_callback = lambda rec: self._refresh_library_grid()
         self.active_pets[record.avatar_id] = pet
         self._refresh_library_grid()
+
+    def open_dialogue_for_record(self, record: AvatarRecord):
+        """Abre a Caixa de Diálogo interativa para o personagem (e o solta na área de trabalho se ainda não estiver)."""
+        if record.avatar_id not in self.active_pets:
+            self.spawn_avatar(record)
+        pet = self.active_pets.get(record.avatar_id)
+        if pet:
+            pet.open_dialogue_box()
 
     def despawn_avatar(self, avatar_id: str):
         pet = self.active_pets.pop(avatar_id, None)
@@ -858,6 +939,92 @@ class StardewDesktopPetApp:
         for aid in list(self.active_pets.keys()):
             self.despawn_avatar(aid)
 
+    def update_and_reload_program(self):
+        """
+        Atualiza o programa automaticamente:
+        1. Sincroniza com o repositório Git (se houver remote configurado);
+        2. Regenera as folhas de sprites (incluindo os avatares 4x6 a partir de source.*) e recarrega todos os pets ativos;
+        3. Permite reiniciar o processo Python automaticamente com 1 clique para aplicar alterações de código.
+        """
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        git_msg = "Repositório Git local sincronizado."
+        try:
+            rem = subprocess.run(
+                ["git", "remote"],
+                cwd=base_dir,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if rem.returncode == 0 and rem.stdout.strip():
+                pull = subprocess.run(
+                    ["git", "pull", "--rebase", "--autostash"],
+                    cwd=base_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                git_msg = (pull.stdout or pull.stderr or "Git pull concluído.").strip()
+            else:
+                st = subprocess.run(
+                    ["git", "log", "-1", "--oneline"],
+                    cwd=base_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if st.returncode == 0 and st.stdout.strip():
+                    git_msg = f"Versão Git atual: {st.stdout.strip()}"
+        except Exception as exc:
+            git_msg = f"Verificação Git local: {exc}"
+
+        # Regenerar todos os sprites de camadas e também reprocessar os 4x6 que possuam source.*
+        self.library.regenerate_all_sprites()
+        rebuilt_count = 0
+        for rec in self.library.list_avatars():
+            if rec.is_freeform_sprite:
+                sources = glob.glob(os.path.join(rec.folder_path, "source.*"))
+                if sources:
+                    try:
+                        full_sheet, _, _ = build_animations_from_4x6_image(sources[0], 4, 6)
+                        full_sheet.save(rec.spritesheet_path)
+                        rebuilt_count += 1
+                    except Exception:
+                        pass
+
+        # Atualizar em tempo real os pets abertos na área de trabalho
+        updated_records = {r.avatar_id: r for r in self.library.list_avatars()}
+        for aid, pet in list(self.active_pets.items()):
+            if aid in updated_records:
+                pet.reload_from_record(updated_records[aid])
+                pet.show_speech("Programa Atualizado! 🔄", duration=40)
+
+        if self.editing_avatar_id and self.editing_avatar_id in updated_records:
+            self.edit_avatar_from_library(updated_records[self.editing_avatar_id])
+        else:
+            self._refresh_live_preview()
+        self._refresh_library_grid()
+
+        restart = messagebox.askyesno(
+            "Programa e Sprites Atualizados! 🔄",
+            f"{git_msg}\n\n"
+            f"• {rebuilt_count} folhas de sprites 4x6 reprocessadas com sucesso!\n"
+            f"• {len(self.active_pets)} pets ativos na tela recarregados!\n\n"
+            "Deseja reiniciar a janela do programa agora para recarregar todos os módulos Python?",
+        )
+        if restart:
+            self._restart_application()
+
+    def _restart_application(self):
+        try:
+            for aid in list(self.active_pets.keys()):
+                self.despawn_avatar(aid)
+            script_path = os.path.abspath(__file__)
+            subprocess.Popen([sys.executable, script_path], cwd=os.path.dirname(script_path))
+            self.root.destroy()
+        except Exception as exc:
+            messagebox.showerror("Erro ao Reiniciar", f"Não foi possível reiniciar automaticamente:\n{exc}")
+
     def _on_toggle_global_gravity(self):
         g = self.gravity_var.get()
         for pet in self.active_pets.values():
@@ -873,6 +1040,11 @@ class StardewDesktopPetApp:
         else:
             self.current_freeform_sheet = None
             self.render_mode_var.set("vanilla_layers")
+
+        if os.path.exists(record.dialog_portrait_path):
+            self.current_dialog_portrait = Image.open(record.dialog_portrait_path).convert("RGBA")
+        else:
+            self.current_dialog_portrait = None
 
         if record.has_photo_portrait and os.path.exists(record.photo_portrait_path):
             self.current_photo_portrait = Image.open(record.photo_portrait_path).convert("RGBA")
@@ -983,6 +1155,17 @@ class StardewDesktopPetApp:
 
             tk.Button(
                 btns,
+                text="💬 Interagir / Diálogo",
+                command=lambda r=rec: self.open_dialogue_for_record(r),
+                bg=BTN_PURPLE,
+                fg="white",
+                font=("Segoe UI", 9, "bold"),
+                padx=8,
+                cursor="hand2",
+            ).pack(side="left", padx=(0, 6))
+
+            tk.Button(
+                btns,
                 text="✏️ Editar / Visualizar",
                 command=lambda r=rec: self.edit_avatar_from_library(r),
                 bg=BTN_BLUE,
@@ -1009,9 +1192,11 @@ def main():
     app = StardewDesktopPetApp(root)
     avatars = app.library.list_avatars()
     if avatars:
-        # Carregar no preview e soltar na área de trabalho o primeiro avatar (incluindo o 4x6 importado!)
-        app.edit_avatar_from_library(avatars[0])
-        app.spawn_avatar(avatars[0])
+        # Priorizar o avatar do Deivdson caso exista para já testar a caixa de diálogo!
+        deivdson_rec = next((a for a in avatars if "deivdson" in a.config.name.lower()), None)
+        target_rec = deivdson_rec or avatars[0]
+        app.edit_avatar_from_library(target_rec)
+        app.spawn_avatar(target_rec)
     root.mainloop()
 
 

@@ -48,6 +48,32 @@ def remove_solid_background(img: Image.Image, tolerance: float = 32.0) -> Image.
     return Image.fromarray(rgba, "RGBA")
 
 
+def _remove_cell_background(cell_rgb: Image.Image, tolerance: float = 34.0) -> Image.Image:
+    """
+    Remove o fundo local de uma única célula (suporta tanto fundo uniforme quanto
+    fundos em tabuleiro/checkerboard onde cada célula tem um tom de fundo próprio).
+    """
+    arr = np.array(cell_rgb.convert("RGB"), dtype=np.float32)
+    h, w, _ = arr.shape
+    m = max(2, min(6, w // 20))
+    border = np.vstack([
+        arr[0:m, :, :].reshape(-1, 3),
+        arr[-m:, :, :].reshape(-1, 3),
+        arr[:, 0:m, :].reshape(-1, 3),
+        arr[:, -m:, :].reshape(-1, 3),
+    ])
+    bg_rgb = np.median(border, axis=0)
+
+    dist = np.linalg.norm(arr - bg_rgb, axis=2)
+    rg_diff = np.abs((arr[:, :, 0] - arr[:, :, 1]) - (bg_rgb[0] - bg_rgb[1]))
+    rb_diff = np.abs((arr[:, :, 0] - arr[:, :, 2]) - (bg_rgb[0] - bg_rgb[2]))
+    is_bg = (dist <= tolerance) & (rg_diff <= 16.0) & (rb_diff <= 16.0)
+
+    alpha = np.where(is_bg, 0, 255).astype(np.uint8)
+    rgba = np.dstack([arr.astype(np.uint8), alpha])
+    return Image.fromarray(rgba, "RGBA")
+
+
 def extract_grid_sprites(
     sheet_rgba: Image.Image,
     grid_rows: int = 4,
@@ -56,7 +82,8 @@ def extract_grid_sprites(
 ) -> List[List[Image.Image]]:
     """
     Divide a folha (ex: 4 linhas x 6 colunas) em 24 sprites individuais,
-    redimensionando com Nearest Neighbor e alinhando todos pela linha dos pés.
+    removendo o fundo local de cada célula, redimensionando com Nearest Neighbor
+    e alinhando todos pela linha dos pés.
     """
     W, H = sheet_rgba.size
     col_w = W / float(grid_cols)
@@ -69,12 +96,13 @@ def extract_grid_sprites(
     for r in range(grid_rows):
         row_list = []
         for c in range(grid_cols):
-            # Margem interna de 2px para evitar pegar restos de células vizinhas
-            x1 = int(c * col_w) + 2
-            y1 = int(r * row_h) + 2
-            x2 = int((c + 1) * col_w) - 2
-            y2 = int((r + 1) * row_h) - 2
-            cell = sheet_rgba.crop((x1, y1, x2, y2))
+            # Margem interna de 4px para evitar linhas divisórias entre células
+            x1 = int(c * col_w) + 4
+            y1 = int(r * row_h) + 4
+            x2 = int((c + 1) * col_w) - 4
+            y2 = int((r + 1) * row_h) - 4
+            raw_cell = sheet_rgba.crop((x1, y1, x2, y2))
+            cell = _remove_cell_background(raw_cell)
             bbox = cell.getbbox()
             if bbox:
                 cropped = cell.crop(bbox)
@@ -110,7 +138,7 @@ def extract_grid_sprites(
 def classify_sprite_direction(cell_rgba: Image.Image) -> str:
     """
     Classifica automaticamente para qual direção o bonequinho está olhando:
-    'front', 'back', 'left' ou 'right' analisando a distribuição da pele do rosto.
+    'front', 'back', 'left' ou 'right' analisando a distribuição da pele do rosto e óculos.
     """
     arr = np.array(cell_rgba)
     bbox = cell_rgba.getbbox()
@@ -118,8 +146,8 @@ def classify_sprite_direction(cell_rgba: Image.Image) -> str:
         return "front"
     x1, y1, x2, y2 = bbox
     h = y2 - y1
-    hy1 = y1 + int(h * 0.12)
-    hy2 = y1 + int(h * 0.42)
+    hy1 = y1 + int(h * 0.14)
+    hy2 = y1 + int(h * 0.43)
     head = arr[hy1:hy2, x1:x2]
     opaque = head[:, :, 3] > 128
     total_head = int(np.count_nonzero(opaque))
@@ -130,19 +158,39 @@ def classify_sprite_direction(cell_rgba: Image.Image) -> str:
     g = head[:, :, 1].astype(np.float32)
     b = head[:, :, 2].astype(np.float32)
 
-    # Detecção de pele humana na região do rosto (diferenciando pele rosada/pêssego de cabelo loiro/dourado)
-    skin_mask = opaque & (r > 185) & (g > 125) & (b > 95) & ((r - b) > 35) & (g > b * 1.12) & (g < b * 1.38)
-    skin_count = int(np.count_nonzero(skin_mask))
+    # 1. Pele clara/rosada (diferenciando de cabelo loiro/dourado onde G > B * 1.38)
+    light_skin = opaque & (r > 185) & (g > 125) & (b > 95) & ((r - b) > 35) & (g > b * 1.12) & (g < b * 1.38)
+    # 2. Pele morena/bronzeada ou lentes claras de óculos (quando não há cabelo loiro dominante)
+    blond_pixels = int(np.count_nonzero(opaque & (r > 170) & (g > 125) & (b < 95) & (g > b * 1.42)))
+    is_light_skin_mode = int(np.count_nonzero(light_skin)) >= max(4, int(total_head * 0.10)) or blond_pixels > int(total_head * 0.25)
+    if is_light_skin_mode:
+        face_mask = light_skin
+    else:
+        tan_skin = opaque & (r > 160) & (g > 90) & (b > 50) & ((r - b) > 45) & ((r - g) > 30)
+        glasses_lens = opaque & (r > 130) & (g > 145) & (b > 145) & (np.abs(r - g) < 35) & (np.abs(g - b) < 35)
+        face_mask = tan_skin | glasses_lens
+
+    skin_count = int(np.count_nonzero(face_mask))
     skin_ratio = skin_count / float(total_head)
 
-    if skin_ratio < 0.12:
+    if skin_ratio < 0.13:
         return "back"
 
-    ys, xs = np.where(skin_mask)
+    if not is_light_skin_mode:
+        eyes_band = head[int(head.shape[0] * 0.28):int(head.shape[0] * 0.68), :]
+        er = eyes_band[:, :, 0].astype(np.float32)
+        eg = eyes_band[:, :, 1].astype(np.float32)
+        eb = eyes_band[:, :, 2].astype(np.float32)
+        ea = eyes_band[:, :, 3] > 128
+        lens_count = int(np.count_nonzero(ea & (er > 125) & (eg > 140) & (eb > 140) & (np.abs(er - eg) < 35)))
+        if lens_count >= 13:
+            return "front"
+
+    ys, xs = np.where(face_mask)
     rel_x = float(np.mean(xs)) / float(head.shape[1])
     if rel_x < 0.45:
         return "left"
-    elif rel_x > 0.55:
+    elif rel_x > 0.525:
         return "right"
     return "front"
 
@@ -284,28 +332,58 @@ def build_animations_from_4x6_image(
     right_list = by_dir["right"]
     left_list = by_dir["left"]
 
-    # Selecionar os 4 melhores quadros para cada uma das 8 animações
-    # 1. Idle (usa o primeiro quadro frontal com leve respiração no quadro 1 e 2)
-    idle_base = front_list[0]
-    idle_bob = Image.new("RGBA", (IMPORT_CELL_W, IMPORT_CELL_H), (0, 0, 0, 0))
-    idle_bob.paste(idle_base, (0, 1), idle_base)
-    idle_frames = [idle_base.copy(), idle_bob.copy(), idle_base.copy(), idle_bob.copy()]
+    if grid_rows == 4 and grid_cols == 6:
+        # Nas grades 4x6 geradas pelo Gemini (prompt padrão do projeto), as posições seguem exatamente a estrutura:
+        # - Linha 0, Cols 0..2: Frente (parado e passos frontais)
+        # - Linha 0, Cols 3..5: 3/4 Direita
+        # - Linha 1, Cols 0..3: Costas
+        # - Linha 2, Cols 2..5: Ciclo completo de 4 quadros caminhando em perfil para a DIREITA
+        # - Linha 2, Cols 0..1 e Linha 3, Cols 0..2: Quadros caminhando em perfil para a ESQUERDA
+        idle_base = grid[0][0]
+        idle_bob = Image.new("RGBA", (IMPORT_CELL_W, IMPORT_CELL_H), (0, 0, 0, 0))
+        idle_bob.paste(idle_base, (0, 1), idle_base)
+        idle_frames = [
+            grid[0][0].copy(),
+            idle_bob.copy(),
+            grid[0][1].copy() if classify_sprite_direction(grid[0][1]) == "front" else grid[0][0].copy(),
+            idle_bob.copy(),
+        ]
 
-    # 2. Walk Right (prefere os últimos 4 quadros de perfil direito que formam o ciclo de caminhada)
-    if len(right_list) >= 4:
-        # Nas sheets 4x6 do Gemini, Row 2 cols 2..5 (índices 3..6 de right_list) formam um ciclo completo de 4 passos!
-        start_r = 3 if len(right_list) >= 7 else 0
-        walk_right_frames = [right_list[(start_r + i) % len(right_list)].copy() for i in range(4)]
-    else:
-        walk_right_frames = [right_list[i % len(right_list)].copy() for i in range(4)]
+        # Ciclo completo de 4 passos para a DIREITA está sempre em Row 3 Cols 3..5 + Row 2 Cols 3..5
+        walk_right_frames = [grid[2][3].copy(), grid[2][4].copy(), grid[2][5].copy(), grid[3][5].copy()]
 
-    # 3. Walk Left (usa os quadros nativos de perfil esquerdo!)
-    if len(left_list) >= 4:
-        walk_left_frames = [left_list[i].copy() for i in range(4)]
-    elif len(left_list) == 3:
-        walk_left_frames = [left_list[0].copy(), left_list[1].copy(), left_list[0].copy(), left_list[2].copy()]
+        # Para a ESQUERDA: Row 2 Col 1 e Row 3 Col 1 são perfis esquerdos com passo; completamos o ciclo com espelhamento de Row 2 Cols 4..5
+        walk_left_frames = [
+            grid[2][1].copy(),
+            ImageOps.mirror(grid[2][4]),
+            grid[3][1].copy(),
+            ImageOps.mirror(grid[2][5]),
+        ]
+
+        front_list = [grid[0][0], grid[0][1], grid[0][2]]
+        right_list = walk_right_frames
     else:
-        walk_left_frames = [left_list[i % len(left_list)].copy() for i in range(4)]
+        # 1. Idle (usa o primeiro quadro frontal com leve respiração no quadro 1 e 2)
+        idle_base = front_list[0]
+        idle_bob = Image.new("RGBA", (IMPORT_CELL_W, IMPORT_CELL_H), (0, 0, 0, 0))
+        idle_bob.paste(idle_base, (0, 1), idle_base)
+        idle_frames = [idle_base.copy(), idle_bob.copy(), idle_base.copy(), idle_bob.copy()]
+
+        # 2. Walk Right
+        if len(right_list) >= 4:
+            start_r = 2 if len(right_list) >= 6 else 0
+            walk_right_frames = [right_list[(start_r + i) % len(right_list)].copy() for i in range(4)]
+        else:
+            walk_right_frames = [right_list[i % len(right_list)].copy() for i in range(4)]
+
+        # 3. Walk Left
+        pure_left = left_list[-3:] if len(left_list) >= 4 else left_list
+        if len(pure_left) >= 4:
+            walk_left_frames = [pure_left[i].copy() for i in range(4)]
+        elif len(pure_left) == 3:
+            walk_left_frames = [pure_left[0].copy(), pure_left[1].copy(), pure_left[2].copy(), pure_left[1].copy()]
+        else:
+            walk_left_frames = [ImageOps.mirror(f) for f in walk_right_frames]
 
     # 4. Water Crops (usa os primeiros quadros 3/4 ou perfil direito)
     water_frames = [

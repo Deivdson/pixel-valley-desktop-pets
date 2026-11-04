@@ -10,6 +10,7 @@ import tkinter as tk
 from typing import Dict, List, Optional, Callable
 from PIL import Image, ImageTk
 from library_manager import AvatarRecord
+from dialogue_box import StardewDialogueWindow
 from sprite_generator import (
     extract_animation_frames,
     ANIMATION_ROWS,
@@ -114,6 +115,8 @@ class DesktopPetWindow:
         self.speech_text: Optional[str] = f"Olá! Eu sou {self.record.config.name}!"
         self.speech_timer = 35
         self.running = True
+        self.dialogue_window: Optional[StardewDialogueWindow] = None
+        self.on_portrait_updated_callback: Optional[Callable[[AvatarRecord], None]] = None
 
         # Elementos do Canvas
         self.sprite_item = self.canvas.create_image(
@@ -168,6 +171,11 @@ class DesktopPetWindow:
         self.menu = tk.Menu(self.win, tearoff=0, bg="#F7E2B8", fg="#3A1E08", activebackground="#D98A2B", activeforeground="white")
         self.menu.add_command(label=f"🌾 {self.record.config.name}", state="disabled")
         self.menu.add_separator()
+        self.menu.add_command(
+            label="💬 Abrir Caixa de Diálogo (Interagir)",
+            command=self.open_dialogue_box,
+        )
+        self.menu.add_separator()
 
         actions_menu = tk.Menu(self.menu, tearoff=0, bg="#F7E2B8", fg="#3A1E08")
         for act_key, act_label in ANIMATION_LABELS.items():
@@ -177,8 +185,8 @@ class DesktopPetWindow:
             )
         self.menu.add_cascade(label="🎬 Executar Ação Agora", menu=actions_menu)
 
-        self.menu.add_command(label="💬 Falar Frase Stardew", command=self.say_random_quote)
-        self.menu.add_command(label="❤️ Fazer Carinho", command=lambda: self._on_double_click(None))
+        self.menu.add_command(label="💭 Falar Frase Rápida", command=self.say_random_quote)
+        self.menu.add_command(label="❤️ Fazer Carinho", command=self.give_pet_affection)
         self.menu.add_separator()
 
         scale_menu = tk.Menu(self.menu, tearoff=0, bg="#F7E2B8", fg="#3A1E08")
@@ -192,6 +200,10 @@ class DesktopPetWindow:
         self.menu.add_command(
             label="🧲 Alternar Gravidade (Barra de Tarefas / Livre)",
             command=self.toggle_gravity,
+        )
+        self.menu.add_command(
+            label="🔄 Recarregar Sprite / Atualizar Pet",
+            command=self.reload_self_from_disk,
         )
         self.menu.add_separator()
         self.menu.add_command(label="🏠 Recolher para Biblioteca", command=self.close)
@@ -292,9 +304,36 @@ class DesktopPetWindow:
     def _on_drag_end(self, event):
         self.is_dragging = False
 
-    def _on_double_click(self, event):
+    def give_pet_affection(self):
         self.set_action("happy_dance", duration_ticks=40)
         self.show_speech(f"❤️ {self.record.config.name} adorou!", duration=38)
+
+    def _on_double_click(self, event):
+        self.open_dialogue_box()
+
+    def open_dialogue_box(self):
+        """Abre a Caixa de Diálogo estilo Stardew Valley para interagir com o personagem."""
+        self.set_action("idle", duration_ticks=80)
+        self.show_speech("💬 Vamos conversar!", duration=35)
+        if self.dialogue_window is not None and self.dialogue_window.win.winfo_exists():
+            self.dialogue_window.focus()
+            return
+
+        def _on_dlg_action(act: str, bubble_txt: str):
+            self.set_action(act, duration_ticks=55)
+            if bubble_txt:
+                self.show_speech(bubble_txt, duration=40)
+
+        def _on_dlg_closed():
+            self.dialogue_window = None
+
+        self.dialogue_window = StardewDialogueWindow(
+            master=self.master,
+            record=self.record,
+            on_action_trigger=_on_dlg_action,
+            on_portrait_updated=self.on_portrait_updated_callback,
+            on_close=_on_dlg_closed,
+        )
 
     def _show_context_menu(self, event):
         try:
@@ -377,11 +416,28 @@ class DesktopPetWindow:
         self.record = updated_record
         self.spritesheet = updated_record.load_spritesheet()
         self._load_scaled_frames()
+        if self.dialogue_window is not None and self.dialogue_window.win.winfo_exists():
+            self.dialogue_window.record = updated_record
+            self.dialogue_window._refresh_portrait_display()
+
+    def reload_self_from_disk(self):
+        """Recarrega imediatamente o spritesheet e retrato do disco para este pet."""
+        self.spritesheet = self.record.load_spritesheet()
+        self._load_scaled_frames()
+        if self.dialogue_window is not None and self.dialogue_window.win.winfo_exists():
+            self.dialogue_window._refresh_portrait_display()
+        self.show_speech("Sprite Recarregado! 🔄", duration=35)
 
     def close(self):
         if not self.running:
             return
         self.running = False
+        if self.dialogue_window is not None:
+            try:
+                self.dialogue_window.close()
+            except Exception:
+                pass
+            self.dialogue_window = None
         try:
             self.win.destroy()
         except Exception:

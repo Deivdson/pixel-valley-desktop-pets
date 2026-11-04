@@ -1,0 +1,38 @@
+{
+  "hearts": 10,
+  "max_hearts": 10,
+  "talks_count": 13,
+  "gifts_count": 1,
+  "custom_lines": [],
+  "persona_bio": "Deivdson, pesquisador e desenvolvedor apaixonado por tecnologia, inteligência artificial e pela vida tranquila no campo do Stardew Valley. Usa óculos arredondados, tem cabelo cacheado castanho com mechas douradas, bigode estiloso e cavanhaque, camisa clara com bolsa a tiracolo.",
+  "history": [
+    {
+      "user": "conta uma piada",
+      "npc": "Ah, você quer uma piada?"
+    },
+    {
+      "user": "sim",
+      "npc": "Certo! Lá vai"
+    },
+    {
+      "user": "cadê?",
+      "npc": "Ah, ela estava carregando"
+    },
+    {
+      "user": "pode contar a piada agora?",
+      "npc": "Ah, sim! Ela finalmente carreg"
+    },
+    {
+      "user": "então me conte",
+      "npc": "Ah, sim! Ela"
+    },
+    {
+      "user": "?",
+      "npc": "Ah, sim! Ela *final"
+    },
+    {
+      "user": "ela final?",
+      "npc": "Ah, sim! Ela *"
+    }
+  ]
+}

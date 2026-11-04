@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+*.pyo
+llm_settings.json

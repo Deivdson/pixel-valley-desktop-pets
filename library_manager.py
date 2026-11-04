@@ -25,12 +25,16 @@ class AvatarRecord:
         folder_path: str,
         has_photo_portrait: bool = False,
         is_freeform_sprite: bool = False,
+        has_dialog_portrait: bool = False,
     ):
         self.avatar_id = avatar_id
         self.config = config
         self.folder_path = folder_path
         self.has_photo_portrait = has_photo_portrait
         self.is_freeform_sprite = is_freeform_sprite
+        self.has_dialog_portrait = has_dialog_portrait or os.path.exists(
+            os.path.join(folder_path, "dialog_portrait.png")
+        )
 
     @property
     def spritesheet_path(self) -> str:
@@ -45,6 +49,10 @@ class AvatarRecord:
         return os.path.join(self.folder_path, "photo_portrait.png")
 
     @property
+    def dialog_portrait_path(self) -> str:
+        return os.path.join(self.folder_path, "dialog_portrait.png")
+
+    @property
     def metadata_path(self) -> str:
         return os.path.join(self.folder_path, "avatar.json")
 
@@ -56,6 +64,8 @@ class AvatarRecord:
         return sheet
 
     def load_portrait(self) -> Image.Image:
+        if os.path.exists(self.dialog_portrait_path):
+            return Image.open(self.dialog_portrait_path).convert("RGBA")
         if self.has_photo_portrait and os.path.exists(self.photo_portrait_path):
             return Image.open(self.photo_portrait_path).convert("RGBA")
         if os.path.exists(self.portrait_path):
@@ -63,6 +73,43 @@ class AvatarRecord:
         portrait = generate_modular_portrait(self.config)
         portrait.save(self.portrait_path)
         return portrait
+
+    def load_dialog_portrait(self) -> Image.Image:
+        """Carrega o retrato em alta definição da caixa de diálogo (ou o retrato 64x64 como fallback)."""
+        if os.path.exists(self.dialog_portrait_path):
+            return Image.open(self.dialog_portrait_path).convert("RGBA")
+        return self.load_portrait()
+
+    def set_dialog_portrait_from_file(self, image_path: str) -> Image.Image:
+        """Importa e salva uma imagem de caixa de diálogo (ex: 'caixa dialogo deivdson.jpg') para o avatar."""
+        img = Image.open(image_path).convert("RGBA")
+        # Recorte quadrado centralizado caso não seja 1:1
+        w, h = img.size
+        if w != h:
+            side = min(w, h)
+            left = (w - side) // 2
+            top = (h - side) // 2
+            img = img.crop((left, top, left + side, top + side))
+        # Salvar versão nítida (256x256) para a caixa de diálogo e miniatura 64x64 para os cards
+        dialog_img = img.resize((256, 256), Image.Resampling.NEAREST)
+        dialog_img.save(self.dialog_portrait_path)
+        thumb_64 = dialog_img.resize((64, 64), Image.Resampling.NEAREST)
+        thumb_64.save(self.photo_portrait_path)
+        thumb_64.save(self.portrait_path)
+        self.has_dialog_portrait = True
+        self.has_photo_portrait = True
+        # Atualizar avatar.json
+        if os.path.exists(self.metadata_path):
+            try:
+                with open(self.metadata_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                meta["has_photo_portrait"] = True
+                meta["has_dialog_portrait"] = True
+                with open(self.metadata_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        return dialog_img
 
 
 class AvatarLibrary:
@@ -165,12 +212,14 @@ class AvatarLibrary:
                     cfg = AvatarConfig.from_dict(data.get("config", {}))
                     has_photo = bool(data.get("has_photo_portrait", False))
                     is_freeform = bool(data.get("is_freeform_sprite", False))
+                    has_dialog = bool(data.get("has_dialog_portrait", False))
                     records.append(AvatarRecord(
                         avatar_id=data.get("id", entry),
                         config=cfg,
                         folder_path=folder,
                         has_photo_portrait=has_photo,
                         is_freeform_sprite=is_freeform,
+                        has_dialog_portrait=has_dialog,
                     ))
                 except Exception:
                     continue
@@ -183,6 +232,7 @@ class AvatarLibrary:
         source_photo_path: Optional[str] = None,
         avatar_id: Optional[str] = None,
         custom_spritesheet: Optional[Image.Image] = None,
+        dialog_portrait: Optional[Image.Image] = None,
     ) -> AvatarRecord:
         if not avatar_id:
             avatar_id = str(uuid.uuid4())[:8]
@@ -196,6 +246,13 @@ class AvatarLibrary:
         else:
             sheet = generate_full_spritesheet(config)
         sheet.save(os.path.join(folder, "spritesheet.png"))
+
+        has_dialog = os.path.exists(os.path.join(folder, "dialog_portrait.png"))
+        if dialog_portrait is not None:
+            dialog_portrait.resize((256, 256), Image.Resampling.NEAREST).save(
+                os.path.join(folder, "dialog_portrait.png")
+            )
+            has_dialog = True
 
         has_photo = False
         if photo_portrait is not None:
@@ -223,6 +280,7 @@ class AvatarLibrary:
             "id": avatar_id,
             "config": config.to_dict(),
             "has_photo_portrait": has_photo,
+            "has_dialog_portrait": has_dialog,
             "is_freeform_sprite": is_freeform,
             "format": "stardew-desktop-pet-v3-freeform-llm",
             "cell_width": 24,
@@ -239,6 +297,7 @@ class AvatarLibrary:
             folder,
             has_photo_portrait=has_photo,
             is_freeform_sprite=is_freeform,
+            has_dialog_portrait=has_dialog,
         )
 
     def delete_avatar(self, avatar_id: str) -> bool:

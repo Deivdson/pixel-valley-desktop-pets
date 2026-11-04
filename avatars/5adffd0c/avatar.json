@@ -1,0 +1,30 @@
+{
+  "id": "5adffd0c",
+  "config": {
+    "name": "Deivdson Gemini lqvg",
+    "is_male": false,
+    "skin_index": 0,
+    "skin_color": "#F9AE89",
+    "hair_index": 0,
+    "hair_color": "#824C27",
+    "hair_style": "curto",
+    "eye_color": "#462C1B",
+    "accessory_index": -1,
+    "beard_style": "sem_barba",
+    "glasses_style": "nenhum",
+    "shirt_index": 0,
+    "outfit_style": "jardineira",
+    "shirt_color": "#C43B3B",
+    "pants_index": 0,
+    "pants_color": "#3B659C",
+    "hat_style": "nenhum",
+    "scale": 4
+  },
+  "has_photo_portrait": true,
+  "is_freeform_sprite": true,
+  "format": "stardew-desktop-pet-v3-freeform-llm",
+  "cell_width": 24,
+  "cell_height": 36,
+  "columns": 4,
+  "rows": 8
+}
