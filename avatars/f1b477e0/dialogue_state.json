@@ -1,0 +1,34 @@
+{
+  "hearts": 6,
+  "max_hearts": 10,
+  "talks_count": 0,
+  "gifts_count": 0,
+  "custom_lines": [],
+  "persona_bio": "Arquétipo: Aventureiro(a), Energético(a) & Empolgado(a) | Emoção Característica: 🤩 Empolgado(a) & Elétrico(a). Traços: 🦁 Corajoso(a) & Aventureiro(a), 😂 Bem-humorado(a) & Piadista, ✨ Carismático(a) & Comunicativo(a). Ama/Gosta muito de: 🏋️ Esportes, Energia & Movimento, 🍕 Pizza & Lanches com Amigos, 🎮 Videogames & Pixel Art 16-bit, ☀️ Dias de Sol, Praia & Passeios. Não gosta de: ⏳ Filas, Lentidão & Internet Travando, 🍽️ Ficar com Fome enquanto Trabalha. Reações e Emoções típicas: 🤩 Comemora com pulinhos cada projeto ou tarefa concluída; 😂 Solta piadas espontâneas quando o computador fica parado; 🔥 Defende seus gostos favoritos com paixão e bom humor. Bordão/Lema: \"Energia lá no alto porque hoje o dia vai render demais!\"",
+  "personality": {
+    "archetype": "Aventureiro(a), Energético(a) & Empolgado(a)",
+    "dominant_emotion": "🤩 Empolgado(a) & Elétrico(a)",
+    "traits": [
+      "🦁 Corajoso(a) & Aventureiro(a)",
+      "😂 Bem-humorado(a) & Piadista",
+      "✨ Carismático(a) & Comunicativo(a)"
+    ],
+    "likes": [
+      "🏋️ Esportes, Energia & Movimento",
+      "🍕 Pizza & Lanches com Amigos",
+      "🎮 Videogames & Pixel Art 16-bit",
+      "☀️ Dias de Sol, Praia & Passeios"
+    ],
+    "dislikes": [
+      "⏳ Filas, Lentidão & Internet Travando",
+      "🍽️ Ficar com Fome enquanto Trabalha"
+    ],
+    "emotions": [
+      "🤩 Comemora com pulinhos cada projeto ou tarefa concluída",
+      "😂 Solta piadas espontâneas quando o computador fica parado",
+      "🔥 Defende seus gostos favoritos com paixão e bom humor"
+    ],
+    "catchphrase": "Energia lá no alto porque hoje o dia vai render demais!"
+  },
+  "history": []
+}

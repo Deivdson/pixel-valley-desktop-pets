@@ -11,7 +11,7 @@ import random
 import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from PIL import Image, ImageTk
 
 from photo_analyzer import (
@@ -26,15 +26,21 @@ from sprite_generator import (
     generate_modular_portrait,
     extract_animation_frames,
     ANIMATION_LABELS,
+    SOCIAL_INTERACTION_ACTIONS,
 )
-from spritesheet_importer import build_animations_from_4x6_image
+from spritesheet_importer import build_animations_from_4x6_image, apply_actions_4x6_to_spritesheet
 from library_manager import AvatarLibrary, AvatarRecord
 from desktop_pet import DesktopPetWindow
 from dialogue_box import StardewDialogueWindow
+from avatar_tasks import open_avatar_tasks_manager_modal
 from gpt_luna import (
     is_gpt_luna_enabled,
     set_gpt_luna_enabled,
     open_gpt_luna_settings_modal,
+    load_avatar_personality,
+    save_avatar_personality,
+    open_avatar_personality_modal,
+    generate_social_encounter_plan,
 )
 
 
@@ -58,6 +64,17 @@ GEMINI_4X6_PROMPT_TEMPLATE = (
     "Linha 2: 6 poses de costas caminhando. "
     "Linha 3: 2 poses perfil esquerdo e 4 poses caminhando para a direita. "
     "Linha 4: 3 poses caminhando para a esquerda e 3 poses caminhando para a direita."
+)
+
+GEMINI_ACTIONS_4X6_PROMPT_TEMPLATE = (
+    "Crie uma sprite sheet de ações em pixel art no estilo exato do jogo Stardew Valley "
+    "baseada no mesmo personagem da foto/sprite enviado, organizada em uma grade de 4 linhas por 6 colunas "
+    "(24 poses de corpo inteiro) sobre um fundo sólido uniforme verde-escuro (#3E5652). "
+    "Mantenha fielmente todas as características do personagem (cabelo, rosto, óculos/barba, acessórios e a mesma roupa). "
+    "Linha 1 (Pescando): 6 poses sequenciais pescando com vara de bambu (lançando a linha, aguardando, puxando a vara e comemorando com um peixe fisgado). "
+    "Linha 2 (Tomando Café): 6 poses sequenciais segurando e bebendo uma caneca de café expresso quentinho com vapor subindo e expressão feliz. "
+    "Linha 3 (Regando Planta): 6 poses sequenciais usando um regador para regar uma plantinha/flor no chão com gotas d'água até ela florescer. "
+    "Linha 4 (Dormindo): 6 poses sequenciais bocejando, sentando/deitando aconchegado para descansar e dormindo profundamente com símbolos de soneca (Zzz)."
 )
 
 GEMINI_DIALOGUE_PORTRAIT_PROMPT = (
@@ -84,6 +101,8 @@ class StardewDesktopPetApp:
 
         self.active_pets: Dict[str, DesktopPetWindow] = {}
         self.gravity_var = tk.BooleanVar(value=True)
+        self.social_interactions_var = tk.BooleanVar(value=True)
+        self.pair_cooldowns: Dict[Tuple[str, str], int] = {}
         self.luna_enabled_var = tk.BooleanVar(value=is_gpt_luna_enabled())
 
         self.editing_avatar_id: Optional[str] = None
@@ -92,6 +111,7 @@ class StardewDesktopPetApp:
         self.current_dialog_portrait: Optional[Image.Image] = None
         self.current_freeform_sheet: Optional[Image.Image] = None
         self.current_config = AvatarConfig(name="Novo Fazendeiro")
+        self.current_pending_personality: Optional[dict] = None
         self.render_mode_var = tk.StringVar(value="freeform")
         self.standalone_dialogues: Dict[str, StardewDialogueWindow] = {}
 
@@ -107,6 +127,7 @@ class StardewDesktopPetApp:
         self._refresh_live_preview()
         self._refresh_library_grid()
         self._animate_editor_preview()
+        self._proximity_social_loop()
 
     def _build_ui(self):
         # Barra de Menu Superior Nativa com Integração GPT Luna
@@ -118,6 +139,11 @@ class StardewDesktopPetApp:
             command=self._on_toggle_gpt_luna,
         )
         luna_menu.add_command(
+            label="🎭 Personalizar Personalidade Individual de cada Avatar (Múltipla Escolha)...",
+            command=self.open_personality_for_current_or_library,
+        )
+        luna_menu.add_separator()
+        luna_menu.add_command(
             label="⚙️ Configurar GPT Luna (Estilo de Humor, Modelo & API)...",
             command=self.open_gpt_luna_window,
         )
@@ -126,6 +152,19 @@ class StardewDesktopPetApp:
         tools_menu = tk.Menu(menubar, tearoff=0, bg=BG_PARCHMENT, fg=TEXT_DARK)
         tools_menu.add_command(label="🌟 Soltar Todos na Área de Trabalho", command=self.spawn_all_avatars)
         tools_menu.add_command(label="🏠 Recolher Todos", command=self.despawn_all_avatars)
+        tools_menu.add_separator()
+        tools_menu.add_checkbutton(
+            label="🤝 Ativar Interações por Proximidade entre Avatares",
+            variable=self.social_interactions_var,
+        )
+        tools_menu.add_command(
+            label="🤝 Promover Encontro entre Dois Avatares Agora",
+            command=self.trigger_manual_avatar_encounter,
+        )
+        tools_menu.add_separator()
+        tools_menu.add_command(label="📋 Copiar Prompt 1: Folha de Sprites 4x6 (Caminhada)", command=self.copy_gemini_4x6_prompt)
+        tools_menu.add_command(label="📋 Copiar Prompt 2: Geração de Ações 4x6 (Pesca, Café, Regar, Dormir)", command=self.copy_gemini_actions_prompt)
+        tools_menu.add_command(label="📋 Copiar Prompt 3: Retrato da Caixa de Diálogo (1:1)", command=self.copy_gemini_dialogue_prompt)
         tools_menu.add_separator()
         tools_menu.add_command(label="📖 Guia & Prompts Gemini", command=self.open_gemini_guide_window)
         tools_menu.add_command(label="🔄 Atualizar Programa (Git)", command=self.update_and_reload_program)
@@ -191,7 +230,33 @@ class StardewDesktopPetApp:
             activeforeground="#FFF6E0",
             font=("Segoe UI", 9, "bold"),
         )
-        grav_chk.pack(side="left", padx=6)
+        grav_chk.pack(side="left", padx=4)
+
+        social_chk = tk.Checkbutton(
+            global_ctrl,
+            text="🤝 Interações",
+            variable=self.social_interactions_var,
+            bg=BG_WOOD_MED,
+            fg="#FFF6E0",
+            selectcolor=BG_WOOD_DARK,
+            activebackground=BG_WOOD_MED,
+            activeforeground="#FFF6E0",
+            font=("Segoe UI", 9, "bold"),
+        )
+        social_chk.pack(side="left", padx=4)
+
+        tk.Button(
+            global_ctrl,
+            text="🤝 Encontro Agora",
+            command=self.trigger_manual_avatar_encounter,
+            bg="#2E7D67",
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            relief="raised",
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left", padx=3)
 
         tk.Button(
             global_ctrl,
@@ -224,6 +289,19 @@ class StardewDesktopPetApp:
             text="🔄 Atualizar",
             command=self.update_and_reload_program,
             bg=BTN_BLUE,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            relief="raised",
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            global_ctrl,
+            text="🛠️ Tarefas dos Avatares",
+            command=self.open_tasks_manager_window,
+            bg=BTN_ORANGE,
             fg="white",
             font=("Segoe UI", 9, "bold"),
             relief="raised",
@@ -302,19 +380,65 @@ class StardewDesktopPetApp:
             cursor="hand2",
         ).pack(side="right")
 
-        # Botão Principal: Importar Imagem de Sprites 4x6 gerada por IA (ex: Gemini)
+        # Linha 1: Importar Imagem de Sprites 4x6 + Copiar Prompt 4x6
+        row_4x6 = tk.Frame(panel, bg=BG_PARCHMENT)
+        row_4x6.pack(fill="x", pady=(0, 4))
+
         import_4x6_btn = tk.Button(
-            panel,
-            text="🖼️ Importar Imagem de Sprites 4x6 (ex: Gemini_Generated_Image) & Gerar Animações",
+            row_4x6,
+            text="🖼️ Importar Imagem de Sprites 4x6 (Caminhada) & Gerar Animações",
             command=self.import_4x6_spritesheet_image,
             bg=BTN_ORANGE,
             fg="white",
-            font=("Segoe UI", 10, "bold"),
-            pady=7,
+            font=("Segoe UI", 9, "bold"),
+            pady=5,
             relief="raised",
             cursor="hand2",
         )
-        import_4x6_btn.pack(fill="x", pady=(0, 6))
+        import_4x6_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        tk.Button(
+            row_4x6,
+            text="📋 Copiar Prompt 4x6",
+            command=self.copy_gemini_4x6_prompt,
+            bg=BTN_PURPLE,
+            fg="white",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=5,
+            relief="raised",
+            cursor="hand2",
+        ).pack(side="right")
+
+        # Linha 2: Importar Quadro 4x6 de Ações + Copiar Prompt de Geração de Ações
+        row_actions = tk.Frame(panel, bg=BG_PARCHMENT)
+        row_actions.pack(fill="x", pady=(0, 6))
+
+        import_actions_btn = tk.Button(
+            row_actions,
+            text="🎬 Importar Quadro 4x6 de Ações (1ª Pescando, 2ª Café, 3ª Regando, 4ª Dormindo)",
+            command=self.import_4x6_actions_image,
+            bg=BTN_BLUE,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            pady=5,
+            relief="raised",
+            cursor="hand2",
+        )
+        import_actions_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        tk.Button(
+            row_actions,
+            text="📋 Copiar Prompt Ações",
+            command=self.copy_gemini_actions_prompt,
+            bg="#2E7D67",
+            fg="white",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=5,
+            relief="raised",
+            cursor="hand2",
+        ).pack(side="right")
 
         # Seletor de Grade + Modo
         mode_row = tk.Frame(panel, bg="#EFE0B9", bd=1, relief="groove", padx=8, pady=4)
@@ -542,7 +666,7 @@ class StardewDesktopPetApp:
             )
             b.pack(side="left", padx=1)
 
-        btn_row = tk.Frame(panel, bg=BG_PARCHMENT, pady=5)
+        btn_row = tk.Frame(panel, bg=BG_PARCHMENT, pady=4)
         btn_row.pack(fill="x", side="bottom")
 
         tk.Button(
@@ -552,21 +676,36 @@ class StardewDesktopPetApp:
             bg=BTN_GREEN,
             fg="white",
             font=("Segoe UI", 10, "bold"),
-            pady=7,
+            pady=6,
             cursor="hand2",
         ).pack(side="left", fill="x", expand=True, padx=(0, 4))
 
         tk.Button(
             btn_row,
-            text="📤 Exportar Sprite Sheet (.PNG)",
+            text="📤 Exportar (.PNG)",
             command=self.export_current_spritesheet,
             bg=BTN_BLUE,
             fg="white",
             font=("Segoe UI", 9, "bold"),
-            pady=7,
-            padx=10,
+            pady=6,
+            padx=8,
             cursor="hand2",
         ).pack(side="right")
+
+        persona_btn_row = tk.Frame(panel, bg=BG_PARCHMENT, pady=2)
+        persona_btn_row.pack(fill="x", side="bottom")
+
+        tk.Button(
+            persona_btn_row,
+            text="🎭 Personalizar Personalidade, Gostos & Emoções deste Avatar (Múltipla Escolha)",
+            command=self.open_personality_for_current_or_library,
+            bg="#6C3B8C",
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            pady=5,
+            relief="raised",
+            cursor="hand2",
+        ).pack(fill="x")
 
     def _build_library_panel(self, parent: tk.Frame):
         panel = tk.Frame(parent, bg=BG_PARCHMENT, bd=4, relief="ridge", padx=12, pady=10)
@@ -636,6 +775,16 @@ class StardewDesktopPetApp:
             "Basta enviar a foto da pessoa no Gemini com esse prompt, baixar a imagem gerada e clicar em '🖼️ Importar Imagem de Sprites 4x6'!",
         )
 
+    def copy_gemini_actions_prompt(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(GEMINI_ACTIONS_4X6_PROMPT_TEMPLATE)
+        messagebox.showinfo(
+            "Prompt de Geração de Ações 4x6 Copiado! 📋🎬",
+            "O prompt para gerar o Quadro 4x6 de Ações (Pescando, Café, Regando e Dormindo) no Gemini foi copiado para a sua área de transferência!\n\n"
+            f"Prompt:\n\"{GEMINI_ACTIONS_4X6_PROMPT_TEMPLATE}\"\n\n"
+            "Envie a foto da pessoa (ou a sprite sheet do personagem) no Gemini com esse prompt, baixe a imagem 4x6 gerada e clique em '🎬 Importar Quadro 4x6 de Ações'!",
+        )
+
     def copy_gemini_dialogue_prompt(self):
         self.root.clipboard_clear()
         self.root.clipboard_append(GEMINI_DIALOGUE_PORTRAIT_PROMPT)
@@ -649,14 +798,14 @@ class StardewDesktopPetApp:
     def open_gemini_guide_window(self):
         """
         Abre uma janela estilo Pergaminho do Stardew Valley com o Guia Passo a Passo completo
-        para criar (1) a Folha de Sprites 4x6 e (2) o Quadro de Retrato da Caixa de Diálogo no Gemini,
-        com botões de copiar os dois prompts e abrir o Gemini no navegador.
+        para criar (1) a Folha de Sprites 4x6 de Caminhada, (2) o Quadro 4x6 de Ações e
+        (3) o Quadro de Retrato da Caixa de Diálogo no Gemini, com botões de copiar todos os prompts.
         """
         import webbrowser
 
         win = tk.Toplevel(self.root)
-        win.title("📖 Guia de Criação de Skins e Caixas de Diálogo no Gemini IA")
-        win.geometry("820x690")
+        win.title("📖 Guia de Criação de Skins, Ações 4x6 e Caixas de Diálogo no Gemini IA")
+        win.geometry("860x760")
         win.configure(bg=BG_WOOD_DARK)
         win.wm_attributes("-topmost", True)
 
@@ -668,8 +817,8 @@ class StardewDesktopPetApp:
 
         tk.Label(
             hdr,
-            text="📖 Guia Passo a Passo: Como Criar Skins 4x6 e Retratos de Diálogo no Gemini",
-            font=("Segoe UI", 13, "bold"),
+            text="📖 Guia Passo a Passo: Prompts de Sprites 4x6, Ações 4x6 e Retratos no Gemini",
+            font=("Segoe UI", 12, "bold"),
             bg=BG_WOOD_MED,
             fg="#FFF6E0",
         ).pack(side="left")
@@ -686,27 +835,37 @@ class StardewDesktopPetApp:
             cursor="hand2",
         ).pack(side="right")
 
-        body = tk.Frame(outer, bg=BG_PARCHMENT, bd=3, relief="sunken", padx=14, pady=10)
-        body.pack(fill="both", expand=True)
+        scroll_wrap = tk.Frame(outer, bg=BG_PARCHMENT, bd=3, relief="sunken")
+        scroll_wrap.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(scroll_wrap, bg=BG_PARCHMENT, highlightthickness=0)
+        vbar = ttk.Scrollbar(scroll_wrap, orient="vertical", command=canvas.yview)
+        body = tk.Frame(canvas, bg=BG_PARCHMENT, padx=14, pady=10)
+
+        body.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win_id = canvas.create_window((0, 0), window=body, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win_id, width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
 
         # ==================== CASO 1: FOLHA DE SPRITES 4x6 ====================
         sec1 = tk.LabelFrame(
             body,
-            text=" 🏃‍♂️ CASO 1: Criar a Folha de Sprites Animada (Grade 4x6 com 24 Poses) ",
+            text=" 🏃‍♂️ CASO 1: Criar a Folha de Sprites Animada (Grade 4x6 de Caminhada com 24 Poses) ",
             font=("Segoe UI", 10, "bold"),
             bg=BG_CARD,
             fg=TEXT_DARK,
             padx=10,
-            pady=8,
+            pady=6,
         )
-        sec1.pack(fill="x", pady=(0, 10))
+        sec1.pack(fill="x", pady=(0, 8))
 
         steps1 = (
             "1. Acesse o Google Gemini (gemini.google.com) e anexe uma foto nítida da pessoa (rosto e roupa visíveis).\n"
             "2. Clique no botão roxo abaixo para copiar o Prompt de Sprites 4x6 e cole junto com a foto no Gemini.\n"
-            "3. Baixe a imagem gerada (grade 4 linhas x 6 colunas) para a sua pasta Downloads.\n"
-            "4. Aqui no programa, clique no botão laranja '🖼️ Importar Imagem de Sprites 4x6' e selecione a imagem:\n"
-            "   o sistema removerá o fundo automaticamente e criará todas as 8 animações (andar p/ esquerda, direita, café, pesca, etc.)!"
+            "3. Baixe a imagem gerada e clique em '🖼️ Importar Imagem de Sprites 4x6' no programa!"
         )
         tk.Label(
             sec1,
@@ -716,12 +875,12 @@ class StardewDesktopPetApp:
             fg=TEXT_DARK,
             justify="left",
             anchor="w",
-        ).pack(fill="x", pady=(0, 6))
+        ).pack(fill="x", pady=(0, 4))
 
         p1_txt = tk.Text(sec1, height=4, font=("Consolas", 9), bg="#FFFDF8", fg="#2B1506", wrap="word", bd=2, relief="sunken")
         p1_txt.insert("1.0", GEMINI_4X6_PROMPT_TEMPLATE)
         p1_txt.configure(state="disabled")
-        p1_txt.pack(fill="x", pady=(0, 6))
+        p1_txt.pack(fill="x", pady=(0, 5))
 
         btn_row1 = tk.Frame(sec1, bg=BG_CARD)
         btn_row1.pack(fill="x")
@@ -749,24 +908,80 @@ class StardewDesktopPetApp:
             cursor="hand2",
         ).pack(side="right")
 
-        # ==================== CASO 2: QUADRO DE RETRATO DA CAIXA DE DIÁLOGO ====================
-        sec2 = tk.LabelFrame(
+        # ==================== CASO 2: QUADRO 4x6 DE AÇÕES ESPECIAIS ====================
+        sec_act = tk.LabelFrame(
             body,
-            text=" 💬 CASO 2: Criar o Quadro de Retrato da Caixa de Diálogo (Busto 1:1 com Moldura) ",
+            text=" 🎬 CASO 2: Criar o Quadro 4x6 de Ações (1ª Pescando, 2ª Café, 3ª Regando, 4ª Dormindo) ",
             font=("Segoe UI", 10, "bold"),
             bg=BG_CARD,
             fg=TEXT_DARK,
             padx=10,
-            pady=8,
+            pady=6,
         )
-        sec2.pack(fill="x", pady=(0, 8))
+        sec_act.pack(fill="x", pady=(0, 8))
+
+        steps_act = (
+            "1. No mesmo chat do Gemini (ou enviando a sprite sheet já gerada do personagem), cole o Prompt de Geração de Ações abaixo.\n"
+            "2. O Gemini gerará uma grade 4x6 com 6 poses Pescando, 6 Tomando Café, 6 Regando Planta e 6 Dormindo.\n"
+            "3. Baixe a imagem e clique em '🎬 Importar Quadro 4x6 de Ações' para aplicar ao avatar!"
+        )
+        tk.Label(
+            sec_act,
+            text=steps_act,
+            font=("Segoe UI", 9),
+            bg=BG_CARD,
+            fg=TEXT_DARK,
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 4))
+
+        p_act_txt = tk.Text(sec_act, height=4, font=("Consolas", 9), bg="#FFFDF8", fg="#2B1506", wrap="word", bd=2, relief="sunken")
+        p_act_txt.insert("1.0", GEMINI_ACTIONS_4X6_PROMPT_TEMPLATE)
+        p_act_txt.configure(state="disabled")
+        p_act_txt.pack(fill="x", pady=(0, 5))
+
+        btn_row_act = tk.Frame(sec_act, bg=BG_CARD)
+        btn_row_act.pack(fill="x")
+        tk.Button(
+            btn_row_act,
+            text="📋 Copiar Prompt 2 (Geração de Ações 4x6)",
+            command=self.copy_gemini_actions_prompt,
+            bg="#2E7D67",
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left")
+
+        tk.Button(
+            btn_row_act,
+            text="🎬 Já gerei! Importar Quadro de Ações Agora",
+            command=lambda: [win.destroy(), self.import_4x6_actions_image()],
+            bg=BTN_BLUE,
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="right")
+
+        # ==================== CASO 3: QUADRO DE RETRATO DA CAIXA DE DIÁLOGO ====================
+        sec2 = tk.LabelFrame(
+            body,
+            text=" 💬 CASO 3: Criar o Quadro de Retrato da Caixa de Diálogo (Busto 1:1 com Moldura) ",
+            font=("Segoe UI", 10, "bold"),
+            bg=BG_CARD,
+            fg=TEXT_DARK,
+            padx=10,
+            pady=6,
+        )
+        sec2.pack(fill="x", pady=(0, 6))
 
         steps2 = (
             "1. No mesmo chat do Gemini (após gerar os sprites 4x6) OU enviando a foto da pessoa + a sprite sheet gerada:\n"
             "2. Clique no botão azul abaixo para copiar o Prompt do Retrato da Caixa de Diálogo e envie no Gemini.\n"
-            "   (Dica: pedir no mesmo chat faz o Gemini manter exatamente a mesma roupa, óculos, barba e penteado do sprite!).\n"
-            "3. Baixe a imagem quadrada gerada com a moldura de madeira.\n"
-            "4. Clique em '🖼️ Importar Caixa de Diálogo' no painel do avatar (ou dentro da própria janela de conversa)!"
+            "3. Baixe a imagem quadrada gerada com a moldura de madeira e clique em '🖼️ Importar Caixa de Diálogo'!"
         )
         tk.Label(
             sec2,
@@ -776,18 +991,18 @@ class StardewDesktopPetApp:
             fg=TEXT_DARK,
             justify="left",
             anchor="w",
-        ).pack(fill="x", pady=(0, 6))
+        ).pack(fill="x", pady=(0, 4))
 
         p2_txt = tk.Text(sec2, height=4, font=("Consolas", 9), bg="#FFFDF8", fg="#2B1506", wrap="word", bd=2, relief="sunken")
         p2_txt.insert("1.0", GEMINI_DIALOGUE_PORTRAIT_PROMPT)
         p2_txt.configure(state="disabled")
-        p2_txt.pack(fill="x", pady=(0, 6))
+        p2_txt.pack(fill="x", pady=(0, 5))
 
         btn_row2 = tk.Frame(sec2, bg=BG_CARD)
         btn_row2.pack(fill="x")
         tk.Button(
             btn_row2,
-            text="📋 Copiar Prompt 2 (Retrato da Caixa de Diálogo)",
+            text="📋 Copiar Prompt 3 (Retrato da Caixa de Diálogo)",
             command=self.copy_gemini_dialogue_prompt,
             bg=BTN_BLUE,
             fg="white",
@@ -819,7 +1034,7 @@ class StardewDesktopPetApp:
             padx=16,
             pady=4,
             cursor="hand2",
-        ).pack( pady=(8, 0))
+        ).pack(pady=(8, 0))
 
     def _get_selected_grid_dims(self):
         val = self.grid_layout_var.get()
@@ -876,6 +1091,52 @@ class StardewDesktopPetApp:
             )
         except Exception as exc:
             messagebox.showerror("Erro ao Importar Folha 4x6", f"Não foi possível processar a folha de sprites:\n{exc}")
+
+    def import_4x6_actions_image(self):
+        """
+        Importa um quadro 4x6 de ações (1ª linha Pescando, 2ª Tomando Café, 3ª Regando Planta, 4ª Dormindo)
+        e atualiza as animações de ação do avatar atual (ou do Deivdson).
+        """
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_dir = downloads_dir if os.path.exists(downloads_dir) else os.path.expanduser("~")
+        file_path = filedialog.askopenfilename(
+            title="Selecione o Quadro 4x6 de Ações (1ª Pescando, 2ª Café, 3ª Regando, 4ª Dormindo)",
+            initialdir=initial_dir,
+            filetypes=[
+                ("Imagens", "*.jpg *.jpeg *.png *.webp *.bmp"),
+                ("Todos os arquivos", "*.*"),
+            ],
+        )
+        if not file_path:
+            return
+        try:
+            base_sheet = self._get_active_preview_sheet()
+            updated_sheet = apply_actions_4x6_to_spritesheet(base_sheet, file_path, target_cols=6)
+            self.current_freeform_sheet = updated_sheet
+            self.render_mode_var.set("freeform")
+
+            if self.editing_avatar_id:
+                for rec in self.library.list_avatars():
+                    if rec.avatar_id == self.editing_avatar_id:
+                        updated_sheet.save(rec.spritesheet_path)
+                        if rec.avatar_id in self.active_pets:
+                            self.active_pets[rec.avatar_id].reload_from_record(rec)
+                        break
+                self._refresh_library_grid()
+
+            self.preview_action_var.set("fishing — Pescando")
+            self.preview_action_key = "fishing"
+            self._refresh_live_preview()
+            messagebox.showinfo(
+                "Ações 4x6 Importadas com Sucesso! 🎬",
+                f"O quadro '{os.path.basename(file_path)}' foi aplicado com 6 quadros por ação:\n\n"
+                "• 1ª Linha → 🎣 Pescando (fishing)\n"
+                "• 2ª Linha → ☕ Tomando Café (coffee_break)\n"
+                "• 3ª Linha → 🌱 Regando Planta (water_crops)\n"
+                "• 4ª Linha → 💤 Dormindo (sleep_sit)",
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro ao Importar Ações 4x6", f"Não foi possível processar o quadro de ações:\n{exc}")
 
     def _on_name_or_scale_change(self):
         self._sync_config_from_vars()
@@ -1103,6 +1364,7 @@ class StardewDesktopPetApp:
         self.current_photo_portrait = None
         self.current_dialog_portrait = None
         self.current_freeform_sheet = None
+        self.current_pending_personality = None
         self.render_mode_var.set("vanilla_layers")
         self.current_config = AvatarConfig(name="Novo Fazendeiro")
         self._sync_vars_from_config()
@@ -1146,7 +1408,11 @@ class StardewDesktopPetApp:
             avatar_id=self.editing_avatar_id,
             custom_spritesheet=custom_sheet,
             dialog_portrait=self.current_dialog_portrait,
+            personality=self.current_pending_personality,
         )
+        if self.current_pending_personality is not None:
+            save_avatar_personality(record.folder_path, record.config.name, self.current_pending_personality)
+            self.current_pending_personality = None
         self.editing_avatar_id = record.avatar_id
         self.spawn_avatar(record)
         self._refresh_library_grid()
@@ -1180,9 +1446,218 @@ class StardewDesktopPetApp:
         )
         pet.on_portrait_updated_callback = lambda rec: self._refresh_library_grid()
         pet.on_open_guide_callback = self.open_gemini_guide_window
+        pet.on_open_tasks_manager_callback = self.open_tasks_manager_window
+        pet.on_request_social_encounter_callback = self.trigger_social_encounter_for_pet
         pet._build_context_menu()
         self.active_pets[record.avatar_id] = pet
         self._refresh_library_grid()
+
+    def _proximity_social_loop(self):
+        """
+        Monitora a proximidade entre os avatares ativos na área de trabalho.
+        Quando dois avatares se cruzam de perto (e não estão em cooldown), há uma chance
+        natural ("em alguns casos") de iniciarem uma animação sincronizada de interação em dupla!
+        """
+        # Decrementar cooldowns de pares recentes
+        for pair_key in list(self.pair_cooldowns.keys()):
+            self.pair_cooldowns[pair_key] -= 1
+            if self.pair_cooldowns[pair_key] <= 0:
+                del self.pair_cooldowns[pair_key]
+
+        if self.social_interactions_var.get() and len(self.active_pets) >= 2:
+            eligible = [
+                p
+                for p in self.active_pets.values()
+                if p.running
+                and not p.is_dragging
+                and not p.in_social_interaction
+                and p.social_cooldown_ticks <= 0
+            ]
+            if len(eligible) >= 2:
+                random.shuffle(eligible)
+                triggered_ids = set()
+                for i in range(len(eligible)):
+                    pet_a = eligible[i]
+                    if pet_a.avatar_id in triggered_ids:
+                        continue
+                    for j in range(i + 1, len(eligible)):
+                        pet_b = eligible[j]
+                        if pet_b.avatar_id in triggered_ids:
+                            continue
+                        pair_key = (
+                            min(pet_a.avatar_id, pet_b.avatar_id),
+                            max(pet_a.avatar_id, pet_b.avatar_id),
+                        )
+                        if pair_key in self.pair_cooldowns:
+                            continue
+
+                        dist_x = abs(pet_a.x - pet_b.x)
+                        dist_y = abs(pet_a.y - pet_b.y)
+                        if dist_x <= 115 and dist_y <= 70:
+                            # Registrar cooldown para que o par não repita imediatamente
+                            self.pair_cooldowns[pair_key] = random.randint(42, 72)
+                            # Ativar em alguns casos (~68% das vezes que se cruzam)
+                            if random.random() < 0.68:
+                                self.start_avatar_pair_encounter(pet_a, pet_b)
+                                triggered_ids.add(pet_a.avatar_id)
+                                triggered_ids.add(pet_b.avatar_id)
+                                break
+
+        self.root.after(450, self._proximity_social_loop)
+
+    def start_avatar_pair_encounter(
+        self,
+        pet_a: DesktopPetWindow,
+        pet_b: DesktopPetWindow,
+        forced_action: Optional[str] = None,
+    ):
+        """
+        Posiciona dois avatares frente a frente e inicia os frames sincronizados de interação
+        (brinde de café, high-five, troca de presente, dança em dupla, risada ou implicância)
+        junto com diálogo em 2 tempos baseado na personalidade individual de cada um.
+        """
+        if not pet_a.running or not pet_b.running:
+            return
+
+        if pet_a.x <= pet_b.x:
+            pet_left, pet_right = pet_a, pet_b
+        else:
+            pet_left, pet_right = pet_b, pet_a
+
+        # Posicionar lado a lado frente a frente sem sobrepor os corpos
+        mid_x = (pet_left.x + pet_right.x) / 2.0
+        gap = max(64, int(pet_left.sprite_w * 0.76))
+        target_left_x = mid_x - (gap / 2.0)
+        target_right_x = mid_x + (gap / 2.0)
+
+        if target_left_x < pet_left.min_x:
+            target_left_x = float(pet_left.min_x)
+            target_right_x = target_left_x + gap
+        elif target_right_x > pet_right.max_x:
+            target_right_x = float(pet_right.max_x)
+            target_left_x = target_right_x - gap
+
+        pet_left.x = float(target_left_x)
+        pet_right.x = float(target_right_x)
+        if abs(pet_left.y - pet_right.y) <= 85:
+            pet_right.y = float(pet_left.y)
+
+        pet_left._update_geometry()
+        pet_right._update_geometry()
+
+        p_left = load_avatar_personality(
+            pet_left.record.folder_path,
+            pet_left.record.config.name,
+            pet_left.avatar_id,
+        )
+        p_right = load_avatar_personality(
+            pet_right.record.folder_path,
+            pet_right.record.config.name,
+            pet_right.avatar_id,
+        )
+
+        plan = generate_social_encounter_plan(
+            pet_left.record.config.name,
+            p_left,
+            pet_right.record.config.name,
+            p_right,
+            forced_action=forced_action,
+        )
+
+        duration_ticks = 44
+        pet_left.start_social_encounter_role(
+            social_action=plan["action"],
+            facing="right",
+            partner_id=pet_right.avatar_id,
+            duration_ticks=duration_ticks,
+            first_bubble=plan["line_left"],
+            second_bubble=plan["react_left_2"],
+        )
+        pet_right.start_social_encounter_role(
+            social_action=plan["action"],
+            facing="left",
+            partner_id=pet_left.avatar_id,
+            duration_ticks=duration_ticks,
+            first_bubble=plan["react_right_1"],
+            second_bubble=plan["line_right"],
+        )
+
+        pair_key = (
+            min(pet_left.avatar_id, pet_right.avatar_id),
+            max(pet_left.avatar_id, pet_right.avatar_id),
+        )
+        self.pair_cooldowns[pair_key] = random.randint(45, 75)
+
+    def trigger_social_encounter_for_pet(
+        self,
+        avatar_id: str,
+        forced_action: Optional[str] = None,
+    ):
+        """Promove um encontro imediato entre o avatar solicitado e o parceiro mais próximo na tela."""
+        pet_a = self.active_pets.get(avatar_id)
+        if not pet_a:
+            return
+
+        others = [p for aid, p in self.active_pets.items() if aid != avatar_id and p.running]
+        if not others:
+            # Se só houver 1 avatar na área de trabalho, solta mais um da biblioteca para interagir!
+            for rec in self.library.list_avatars():
+                if rec.avatar_id != avatar_id:
+                    self.spawn_avatar(rec)
+                    others = [p for aid, p in self.active_pets.items() if aid != avatar_id and p.running]
+                    break
+
+        if not others:
+            pet_a.set_action(forced_action or "social_coffee_toast", duration_ticks=42)
+            pet_a.show_speech("🤝 Adicione outro avatar na biblioteca para interagirmos!", duration=42)
+            return
+
+        # Escolher o avatar ativo mais próximo
+        pet_b = min(others, key=lambda p: abs(p.x - pet_a.x) + abs(p.y - pet_a.y))
+        # Aproximar suavemente o segundo avatar da posição do primeiro antes de alinhar
+        pet_b.x = pet_a.x + (72 if pet_a.x < pet_a.max_x - 90 else -72)
+        pet_b.y = pet_a.y
+        self.start_avatar_pair_encounter(pet_a, pet_b, forced_action=forced_action)
+
+    def trigger_manual_avatar_encounter(self):
+        """Botão '🤝 Encontro Agora': garante pelo menos 2 avatares na tela e promove uma interação em dupla."""
+        if len(self.active_pets) < 2:
+            for rec in self.library.list_avatars():
+                if rec.avatar_id not in self.active_pets:
+                    self.spawn_avatar(rec)
+                if len(self.active_pets) >= 2:
+                    break
+
+        pets = [p for p in self.active_pets.values() if p.running]
+        if len(pets) < 2:
+            messagebox.showinfo(
+                "Interação em Dupla",
+                "É necessário ter pelo menos 2 avatares na biblioteca para promover um encontro!",
+            )
+            return
+
+        available = [p for p in pets if not p.in_social_interaction]
+        pool = available if len(available) >= 2 else pets
+        pet_a, pet_b = random.sample(pool, 2)
+        pet_b.x = pet_a.x + (72 if pet_a.x < pet_a.max_x - 90 else -72)
+        pet_b.y = pet_a.y
+        self.start_avatar_pair_encounter(pet_a, pet_b)
+
+    def open_tasks_manager_window(self):
+        """Abre a Central de Tarefas para configurar qual avatar executa qual tarefa e disparar ações."""
+        open_avatar_tasks_manager_modal(
+            master=self.root,
+            avatars=self.library.list_avatars(),
+            on_trigger_avatar_task=self.trigger_task_for_record,
+        )
+
+    def trigger_task_for_record(self, record: AvatarRecord, task_id: str):
+        """Garante que o avatar esteja ativo na área de trabalho e executa a tarefa solicitada."""
+        if record.avatar_id not in self.active_pets:
+            self.spawn_avatar(record)
+        pet = self.active_pets.get(record.avatar_id)
+        if pet:
+            pet.execute_desktop_task(task_id)
 
     def open_dialogue_for_record(self, record: AvatarRecord):
         """Abre a Caixa de Diálogo interativa para o personagem (e o solta na área de trabalho se ainda não estiver)."""
@@ -1327,6 +1802,38 @@ class StardewDesktopPetApp:
             ),
         )
 
+    def open_personality_for_record(self, record: Optional[AvatarRecord]):
+        """Abre o formulário de múltipla escolha de personalidade (gostos e emoções) para um avatar."""
+        all_recs = self.library.list_avatars()
+
+        def _on_saved(saved_rec, p_dict):
+            if saved_rec is None:
+                self.current_pending_personality = p_dict
+            else:
+                if saved_rec.avatar_id in self.active_pets:
+                    pet = self.active_pets[saved_rec.avatar_id]
+                    pet.reload_from_record(saved_rec)
+                    dom_emo = p_dict.get("dominant_emotion", "😊")
+                    pet.set_action("happy_dance", duration_ticks=40)
+                    pet.show_speech(f"🎭 {dom_emo}!", duration=42)
+            self._refresh_library_grid()
+
+        open_avatar_personality_modal(
+            parent=self.root,
+            record=record,
+            all_records=all_recs,
+            on_saved_callback=_on_saved,
+        )
+
+    def open_personality_for_current_or_library(self):
+        all_recs = self.library.list_avatars()
+        target_rec = None
+        if self.editing_avatar_id:
+            target_rec = next((r for r in all_recs if r.avatar_id == self.editing_avatar_id), None)
+        if target_rec is None and all_recs:
+            target_rec = all_recs[0]
+        self.open_personality_for_record(target_rec)
+
     def edit_avatar_from_library(self, record: AvatarRecord):
         self.editing_avatar_id = record.avatar_id
         self.current_config = record.config
@@ -1416,12 +1923,18 @@ class StardewDesktopPetApp:
                 if rec.is_freeform_sprite
                 else f"Cabelo #{rec.config.hair_index} | Camisa #{rec.config.shirt_index} | Barba: {rec.config.beard_style}"
             )
+            p_info = load_avatar_personality(rec.folder_path, rec.config.name, rec.avatar_id)
+            dom_emo = p_info.get("dominant_emotion", "😊 Alegre")
+            top_likes = ", ".join(p_info.get("likes", [])[:2])
+            persona_line = f"🎭 {dom_emo}  |  ❤️ Gosta de: {top_likes}"
+
             tk.Label(
                 info,
-                text=details_txt,
+                text=f"{details_txt}\n{persona_line}",
                 font=("Segoe UI", 8),
                 bg=card_bg,
                 fg="#5E3B18",
+                justify="left",
                 anchor="w",
             ).pack(fill="x", pady=(2, 6))
 
@@ -1438,40 +1951,51 @@ class StardewDesktopPetApp:
                     font=("Segoe UI", 9, "bold"),
                     padx=8,
                     cursor="hand2",
-                ).pack(side="left", padx=(0, 6))
+                ).pack(side="left", padx=(0, 5))
             else:
                 tk.Button(
                     btns,
-                    text="🚀 Soltar na Área de Trabalho",
+                    text="🚀 Soltar",
                     command=lambda r=rec: self.spawn_avatar(r),
                     bg=BTN_GREEN,
                     fg="white",
                     font=("Segoe UI", 9, "bold"),
                     padx=8,
                     cursor="hand2",
-                ).pack(side="left", padx=(0, 6))
+                ).pack(side="left", padx=(0, 5))
 
             tk.Button(
                 btns,
-                text="💬 Interagir / Diálogo",
+                text="💬 Diálogo",
                 command=lambda r=rec: self.open_dialogue_for_record(r),
                 bg=BTN_PURPLE,
                 fg="white",
                 font=("Segoe UI", 9, "bold"),
                 padx=8,
                 cursor="hand2",
-            ).pack(side="left", padx=(0, 6))
+            ).pack(side="left", padx=(0, 5))
 
             tk.Button(
                 btns,
-                text="✏️ Editar / Visualizar",
+                text="🎭 Personalidade",
+                command=lambda r=rec: self.open_personality_for_record(r),
+                bg="#8A4B18",
+                fg="white",
+                font=("Segoe UI", 9, "bold"),
+                padx=8,
+                cursor="hand2",
+            ).pack(side="left", padx=(0, 5))
+
+            tk.Button(
+                btns,
+                text="✏️ Editar",
                 command=lambda r=rec: self.edit_avatar_from_library(r),
                 bg=BTN_BLUE,
                 fg="white",
                 font=("Segoe UI", 9, "bold"),
                 padx=8,
                 cursor="hand2",
-            ).pack(side="left", padx=(0, 6))
+            ).pack(side="left", padx=(0, 5))
 
             tk.Button(
                 btns,

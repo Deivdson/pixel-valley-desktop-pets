@@ -27,5 +27,31 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Criativo(a), Artístico(a) & Sonhador(a)",
+    "dominant_emotion": "✨ Inspirado(a) & Sonhador(a)",
+    "traits": [
+      "🎨 Criativo(a), Artístico(a) & Sonhador(a)",
+      "🥰 Carinhoso(a) & Acolhedor(a)",
+      "🤫 Observador(a) & Detalhista"
+    ],
+    "likes": [
+      "🌱 Plantas, Flores & Jardinagem",
+      "🐾 Bichinhos Fofos & Natureza",
+      "🌧️ Dias de Chuva & Frio Aconchegante",
+      "🍰 Bolo, Doces & Confeitaria",
+      "📚 Livros, Ciência & Pesquisa"
+    ],
+    "dislikes": [
+      "🔥 Calor Exagerado",
+      "📢 Barulho Alto & Estresse"
+    ],
+    "emotions": [
+      "💖 Fica super derretido(a) e feliz quando recebe elogios",
+      "🥺 Cuida do usuário lembrando de beber água e descansar a vista",
+      "🎶 Cantarola e espalha alto-astral pela barra de tarefas"
+    ],
+    "catchphrase": "Cada pequeno detalhe na tela e na natureza tem sua própria poesia!"
+  }
 }

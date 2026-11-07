@@ -27,5 +27,31 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Sarcástico(a), Espertinho(a) & Bem-Humorado(a)",
+    "dominant_emotion": "🤩 Empolgado(a) & Elétrico(a)",
+    "traits": [
+      "👑 Confiante & Cheio(a) de Atitude",
+      "😏 Irônico(a) & Sarcástico(a) na medida",
+      "🦁 Corajoso(a) & Aventureiro(a)",
+      "✨ Carismático(a) & Comunicativo(a)"
+    ],
+    "likes": [
+      "🎵 Música (MPB, Rock, Lo-Fi)",
+      "🎬 Filmes, Séries & Cultura Pop",
+      "🍕 Pizza & Lanches com Amigos",
+      "💎 Cristais, Minerais & Mistérios do Vale"
+    ],
+    "dislikes": [
+      "⏰ Acordar Cedo na Segunda-feira",
+      "⏳ Filas, Lentidão & Internet Travando"
+    ],
+    "emotions": [
+      "🔥 Defende seus gostos favoritos com paixão e bom humor",
+      "🤩 Comemora com pulinhos cada projeto ou tarefa concluída",
+      "🧐 Repara no movimento do mouse e nas abas abertas"
+    ],
+    "catchphrase": "Bora transformar essa rotina no PC em algo épico hoje!"
+  }
 }

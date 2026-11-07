@@ -1,7 +1,7 @@
 {
   "id": "5adffd0c",
   "config": {
-    "name": "Deivdson Gemini lqvg",
+    "name": "Deivdson",
     "is_male": false,
     "skin_index": 0,
     "skin_color": "#F9AE89",
@@ -21,10 +21,40 @@
     "scale": 4
   },
   "has_photo_portrait": true,
+  "has_dialog_portrait": true,
   "is_freeform_sprite": true,
   "format": "stardew-desktop-pet-v3-freeform-llm",
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Nerd / Pesquisador & Dev Apaixonado",
+    "dominant_emotion": "🤓 Focado(a) & Curioso(a)",
+    "traits": [
+      "✨ Carismático(a) & Comunicativo(a)",
+      "😂 Bem-humorado(a) & Piadista",
+      "🤓 Nerd / Geek & Curioso(a)",
+      "🚀 Focado(a), Produtivo(a) & Determinado(a)"
+    ],
+    "likes": [
+      "☕ Café Expresso Quentinho",
+      "💻 Programação, Código & IA",
+      "🎮 Videogames & Pixel Art 16-bit",
+      "📚 Livros, Ciência & Pesquisa",
+      "🎣 Pescaria & Beira do Rio"
+    ],
+    "dislikes": [
+      "🐛 Bugs no Código & Tela Azul",
+      "☕ Ficar Sem Café / Bateria Fraca",
+      "⏳ Filas, Lentidão & Internet Travando"
+    ],
+    "emotions": [
+      "🤩 Comemora com pulinhos cada projeto ou tarefa concluída",
+      "☕ Fica elétrico(a) e falante depois de tomar café",
+      "😂 Solta piadas espontâneas quando o computador fica parado",
+      "🧐 Repara no movimento do mouse e nas abas abertas"
+    ],
+    "catchphrase": "Com um Café Expresso Triplo e código limpo, qualquer projeto vira lendário!"
+  }
 }

@@ -1,0 +1,34 @@
+{
+  "hearts": 6,
+  "max_hearts": 10,
+  "talks_count": 0,
+  "gifts_count": 0,
+  "custom_lines": [],
+  "persona_bio": "Arquétipo: Criativo(a), Artístico(a) & Sonhador(a) | Emoção Característica: 🤓 Focado(a) & Curioso(a). Traços: 😏 Irônico(a) & Sarcástico(a) na medida, 🤫 Observador(a) & Detalhista, 🚀 Focado(a), Produtivo(a) & Determinado(a). Ama/Gosta muito de: ☀️ Dias de Sol, Praia & Passeios, 🎣 Pescaria & Beira do Rio, 🎬 Filmes, Séries & Cultura Pop, 💎 Cristais, Minerais & Mistérios do Vale. Não gosta de: ⏰ Acordar Cedo na Segunda-feira, 🔥 Calor Exagerado. Reações e Emoções típicas: 💖 Fica super derretido(a) e feliz quando recebe elogios; 🤩 Comemora com pulinhos cada projeto ou tarefa concluída; ☕ Fica elétrico(a) e falante depois de tomar café. Bordão/Lema: \"Aqui é Spritesheet De Aventur, trazendo meu jeito único para a sua área de trabalho!\"",
+  "personality": {
+    "archetype": "Criativo(a), Artístico(a) & Sonhador(a)",
+    "dominant_emotion": "🤓 Focado(a) & Curioso(a)",
+    "traits": [
+      "😏 Irônico(a) & Sarcástico(a) na medida",
+      "🤫 Observador(a) & Detalhista",
+      "🚀 Focado(a), Produtivo(a) & Determinado(a)"
+    ],
+    "likes": [
+      "☀️ Dias de Sol, Praia & Passeios",
+      "🎣 Pescaria & Beira do Rio",
+      "🎬 Filmes, Séries & Cultura Pop",
+      "💎 Cristais, Minerais & Mistérios do Vale"
+    ],
+    "dislikes": [
+      "⏰ Acordar Cedo na Segunda-feira",
+      "🔥 Calor Exagerado"
+    ],
+    "emotions": [
+      "💖 Fica super derretido(a) e feliz quando recebe elogios",
+      "🤩 Comemora com pulinhos cada projeto ou tarefa concluída",
+      "☕ Fica elétrico(a) e falante depois de tomar café"
+    ],
+    "catchphrase": "Aqui é Spritesheet De Aventur, trazendo meu jeito único para a sua área de trabalho!"
+  },
+  "history": []
+}

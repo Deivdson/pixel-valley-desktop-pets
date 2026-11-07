@@ -27,5 +27,30 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Doce, Acolhedor(a) & Carismático(a)",
+    "dominant_emotion": "😌 Pleno(a) & Tranquilo(a)",
+    "traits": [
+      "😤 Bravinho(a) Fofo(a) quando provocado(a)",
+      "🚀 Focado(a), Produtivo(a) & Determinado(a)",
+      "🤫 Observador(a) & Detalhista"
+    ],
+    "likes": [
+      "🍕 Pizza & Lanches com Amigos",
+      "☀️ Dias de Sol, Praia & Passeios",
+      "🌱 Plantas, Flores & Jardinagem",
+      "🌧️ Dias de Chuva & Frio Aconchegante"
+    ],
+    "dislikes": [
+      "🐛 Bugs no Código & Tela Azul",
+      "📢 Barulho Alto & Estresse"
+    ],
+    "emotions": [
+      "🎶 Cantarola e espalha alto-astral pela barra de tarefas",
+      "😂 Solta piadas espontâneas quando o computador fica parado",
+      "🧐 Repara no movimento do mouse e nas abas abertas"
+    ],
+    "catchphrase": "Aqui é Avatar Gemini hdkc, trazendo meu jeito único para a sua área de trabalho!"
+  }
 }

@@ -1,0 +1,9 @@
+{
+  "avatar_assignments": {},
+  "settings": {
+    "organize_target": "desktop",
+    "organize_include_shortcuts": false,
+    "fish_target": "downloads",
+    "fish_min_size_mb": 10
+  }
+}

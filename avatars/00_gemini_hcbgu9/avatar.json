@@ -26,5 +26,34 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Bravinho(a) Fofo(a) & Cheio(a) de Personalidade",
+    "dominant_emotion": "😊 Alegre & Radiante",
+    "traits": [
+      "🥰 Carinhoso(a) & Acolhedor(a)",
+      "✨ Carismático(a) & Comunicativo(a)",
+      "😤 Bravinho(a) Fofo(a) quando provocado(a)",
+      "😏 Irônico(a) & Sarcástico(a) na medida"
+    ],
+    "likes": [
+      "🍰 Bolo, Doces & Confeitaria",
+      "☕ Café Expresso Quentinho",
+      "🎵 Música (MPB, Rock, Lo-Fi)",
+      "🌱 Plantas, Flores & Jardinagem",
+      "☀️ Dias de Sol, Praia & Passeios"
+    ],
+    "dislikes": [
+      "🍽️ Ficar com Fome enquanto Trabalha",
+      "🗂️ Área de Trabalho Bagunçada",
+      "🐛 Bugs no Código & Tela Azul"
+    ],
+    "emotions": [
+      "💖 Fica super derretido(a) e feliz quando recebe elogios",
+      "😤 Faz drama engraçado quando é chamado(a) de folgado(a) ou bugado(a)",
+      "🥺 Cuida do usuário lembrando de beber água e descansar a vista",
+      "🎶 Cantarola e espalha alto-astral pela barra de tarefas"
+    ],
+    "catchphrase": "Me traz um bolo com café quentinho e uma boa MPB que meu humor fica à prova de qualquer bug!"
+  }
 }

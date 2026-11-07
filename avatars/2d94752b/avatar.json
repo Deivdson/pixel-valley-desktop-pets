@@ -1,0 +1,56 @@
+{
+  "id": "2d94752b",
+  "config": {
+    "name": "Caby v2",
+    "is_male": false,
+    "skin_index": 0,
+    "skin_color": "#F9AE89",
+    "hair_index": 0,
+    "hair_color": "#824C27",
+    "hair_style": "curto",
+    "eye_color": "#462C1B",
+    "accessory_index": -1,
+    "beard_style": "sem_barba",
+    "glasses_style": "nenhum",
+    "shirt_index": 0,
+    "outfit_style": "jardineira",
+    "shirt_color": "#C43B3B",
+    "pants_index": 0,
+    "pants_color": "#3B659C",
+    "hat_style": "nenhum",
+    "scale": 4
+  },
+  "has_photo_portrait": true,
+  "has_dialog_portrait": false,
+  "is_freeform_sprite": true,
+  "format": "stardew-desktop-pet-v3-freeform-llm",
+  "cell_width": 24,
+  "cell_height": 36,
+  "columns": 4,
+  "rows": 8,
+  "personality": {
+    "archetype": "Doce, Acolhedor(a) & Carismático(a)",
+    "dominant_emotion": "🥰 Carinhoso(a) & Afetuoso(a)",
+    "traits": [
+      "🥰 Carinhoso(a) & Acolhedor(a)",
+      "🎨 Criativo(a), Artístico(a) & Sonhador(a)",
+      "✨ Carismático(a) & Comunicativo(a)"
+    ],
+    "likes": [
+      "🍰 Bolo, Doces & Confeitaria",
+      "🐾 Bichinhos Fofos & Natureza",
+      "🎮 Videogames & Pixel Art 16-bit",
+      "🎵 Música (MPB, Rock, Lo-Fi)"
+    ],
+    "dislikes": [
+      "⏰ Acordar Cedo na Segunda-feira",
+      "📢 Barulho Alto & Estresse"
+    ],
+    "emotions": [
+      "💖 Fica super derretido(a) e feliz quando recebe elogios",
+      "🎶 Cantarola e espalha alto-astral pela barra de tarefas",
+      "🥺 Cuida do usuário lembrando de beber água e descansar a vista"
+    ],
+    "catchphrase": "Tudo fica mais divertido quando a gente divide um docinho e boas ideias!"
+  }
+}

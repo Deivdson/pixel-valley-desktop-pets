@@ -27,5 +27,30 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Aventureiro(a), Energético(a) & Empolgado(a)",
+    "dominant_emotion": "🤩 Empolgado(a) & Elétrico(a)",
+    "traits": [
+      "🦁 Corajoso(a) & Aventureiro(a)",
+      "😂 Bem-humorado(a) & Piadista",
+      "✨ Carismático(a) & Comunicativo(a)"
+    ],
+    "likes": [
+      "🏋️ Esportes, Energia & Movimento",
+      "🍕 Pizza & Lanches com Amigos",
+      "🎮 Videogames & Pixel Art 16-bit",
+      "☀️ Dias de Sol, Praia & Passeios"
+    ],
+    "dislikes": [
+      "⏳ Filas, Lentidão & Internet Travando",
+      "🍽️ Ficar com Fome enquanto Trabalha"
+    ],
+    "emotions": [
+      "🤩 Comemora com pulinhos cada projeto ou tarefa concluída",
+      "😂 Solta piadas espontâneas quando o computador fica parado",
+      "🔥 Defende seus gostos favoritos com paixão e bom humor"
+    ],
+    "catchphrase": "Energia lá no alto porque hoje o dia vai render demais!"
+  }
 }

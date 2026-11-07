@@ -233,6 +233,7 @@ class AvatarLibrary:
         avatar_id: Optional[str] = None,
         custom_spritesheet: Optional[Image.Image] = None,
         dialog_portrait: Optional[Image.Image] = None,
+        personality: Optional[dict] = None,
     ) -> AvatarRecord:
         if not avatar_id:
             avatar_id = str(uuid.uuid4())[:8]
@@ -276,6 +277,16 @@ class AvatarLibrary:
             except Exception:
                 pass
 
+        meta_file_path = os.path.join(folder, "avatar.json")
+        existing_personality = None
+        if os.path.exists(meta_file_path):
+            try:
+                with open(meta_file_path, "r", encoding="utf-8") as f:
+                    old_meta = json.load(f)
+                existing_personality = old_meta.get("personality")
+            except Exception:
+                pass
+
         meta = {
             "id": avatar_id,
             "config": config.to_dict(),
@@ -288,7 +299,12 @@ class AvatarLibrary:
             "columns": 4,
             "rows": 8,
         }
-        with open(os.path.join(folder, "avatar.json"), "w", encoding="utf-8") as f:
+        if personality is not None:
+            meta["personality"] = personality
+        elif existing_personality is not None:
+            meta["personality"] = existing_personality
+
+        with open(meta_file_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
         return AvatarRecord(

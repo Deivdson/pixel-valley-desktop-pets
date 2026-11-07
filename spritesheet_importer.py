@@ -458,3 +458,173 @@ def build_animations_from_4x6_image(
         "back_count": str(len(by_dir["back"])),
     }
     return full_sheet, portrait, stats
+
+
+def _split_action_row_segments(row_rgba: Image.Image, target_cols: int = 6) -> List[Image.Image]:
+    """
+    Segmenta horizontalmente uma faixa de ação (ex: Pescando, Tomando Café, Regando, Dormindo)
+    identificando o núcleo vertical de cada personagem (altura densa >= 120px de largura) e
+    dividindo nos vales exatos entre personagens (preservando varas de pesca, peixes, regadores e camas).
+    """
+    arr = np.array(row_rgba)
+    h, w, _ = arr.shape
+    col_counts = np.sum(arr[:, :, 3] > 16, axis=0)
+    is_core = col_counts > 90
+
+    cores: List[Tuple[int, int]] = []
+    in_c = False
+    s = 0
+    for x in range(w):
+        if is_core[x] and not in_c:
+            s = x
+            in_c = True
+        elif not is_core[x] and in_c:
+            if x - s >= 120:
+                if cores and s - cores[-1][1] < 25:
+                    cores[-1] = (cores[-1][0], x)
+                else:
+                    cores.append((s, x))
+            in_c = False
+    if in_c and (w - s) >= 120:
+        cores.append((s, w))
+
+    if not cores:
+        step = w / float(target_cols)
+        splits = [int(i * step) for i in range(target_cols + 1)]
+    else:
+        splits = [0]
+        for i in range(1, len(cores)):
+            prev_end = cores[i - 1][1]
+            next_start = cores[i][0]
+            sl = max(prev_end, next_start - 60)
+            sr = max(sl + 1, next_start + 2)
+            vx = sl + int(np.argmin(col_counts[sl:sr]))
+            splits.append(vx)
+        splits.append(w)
+
+    crops: List[Image.Image] = []
+    for i in range(len(splits) - 1):
+        sx, ex = splits[i], splits[i + 1]
+        sub = row_rgba.crop((max(0, sx), 0, min(w, ex), h))
+        bb = sub.getbbox()
+        if bb:
+            cropped = sub.crop(bb)
+            # Se uma pose tiver linha de pesca muito longa (> 390px), compactar apenas a extensão da linha à direita
+            # para preservar 100% da proporção do corpo/rosto do personagem!
+            if cropped.width > 395:
+                body_w = min(245, int(cropped.width * 0.40))
+                body_part = cropped.crop((0, 0, body_w, cropped.height))
+                prop_part = cropped.crop((body_w, 0, cropped.width, cropped.height))
+                new_prop_w = max(80, 380 - body_w)
+                prop_compact = prop_part.resize((new_prop_w, cropped.height), Image.Resampling.NEAREST)
+                combined = Image.new("RGBA", (body_w + new_prop_w, cropped.height), (0, 0, 0, 0))
+                combined.paste(body_part, (0, 0))
+                combined.paste(prop_compact, (body_w, 0))
+                cropped = combined
+            crops.append(cropped)
+    return crops
+
+
+def extract_action_rows_from_4x6(
+    actions_image_path: str,
+    target_cols: int = 6,
+    cell_size: Tuple[int, int] = (IMPORT_CELL_W, IMPORT_CELL_H),
+) -> Dict[str, List[Image.Image]]:
+    """
+    Extrai um quadro 4x6 de ações específicas onde:
+    - Linha 1 (row 0): fishing (Pescando)
+    - Linha 2 (row 1): coffee_break (Tomando Café)
+    - Linha 3 (row 2): water_crops (Regando Planta)
+    - Linha 4 (row 3): sleep_sit (Dormindo)
+    Retorna um dicionário mapeando cada ação para uma lista de `target_cols` quadros RGBA (48x72).
+    """
+    raw_img = Image.open(actions_image_path)
+    rgba = remove_solid_background(raw_img, tolerance=42.0)
+    W, H = rgba.size
+    row_h = H / 4.0
+    tw, th = cell_size
+
+    row_Order = ["fishing", "coffee_break", "water_crops", "sleep_sit"]
+    raw_by_action: Dict[str, List[Image.Image]] = {}
+    standing_heights: List[int] = []
+
+    for r_idx, act_name in enumerate(row_Order):
+        y1 = max(0, int(r_idx * row_h) + 4)
+        y2 = min(H, int((r_idx + 1) * row_h) - 4)
+        band = rgba.crop((0, y1, W, y2))
+        poses = _split_action_row_segments(band, target_cols=6)
+        raw_by_action[act_name] = poses
+        if act_name in ("coffee_break", "water_crops"):
+            for p in poses:
+                standing_heights.append(p.height)
+
+    ref_h = float(np.median(standing_heights)) if standing_heights else 468.0
+    desired_char_h = int(th * 0.78)  # 56px em célula de 72px
+    scale_factor = desired_char_h / ref_h
+
+    normalized: Dict[str, List[Image.Image]] = {}
+    for act_name, poses in raw_by_action.items():
+        if not poses:
+            poses = [Image.new("RGBA", (32, 32), (0, 0, 0, 0))]
+
+        frames_out: List[Image.Image] = []
+        for c_idx in range(target_cols):
+            # Se a linha tiver 5 poses (ex: pesca), repetir a última pose comemorando com o peixe
+            src = poses[min(c_idx, len(poses) - 1)]
+            nw = max(1, int(round(src.width * scale_factor)))
+            nh = max(1, int(round(src.height * scale_factor)))
+            if nh > th - 4:
+                nh = th - 4
+            if nw > tw - 2:
+                nw = tw - 2
+            spr_small = src.resize((nw, nh), Image.Resampling.NEAREST)
+
+            canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+            px = (tw - nw) // 2
+            py = (th - 4) - nh
+            canvas.paste(spr_small, (px, py), spr_small)
+            frames_out.append(canvas)
+
+        normalized[act_name] = frames_out
+
+    return normalized
+
+
+def apply_actions_4x6_to_spritesheet(
+    base_sheet: Image.Image,
+    actions_image_path: str,
+    target_cols: int = 6,
+) -> Image.Image:
+    """
+    Combina a Sprite Sheet base do personagem (mantendo Idle, Walk Right, Walk Left e Happy Dance)
+    com os novos sprites de animações 4x6 de:
+      - Linha 1: Pescando (fishing)
+      - Linha 2: Tomando Café (coffee_break)
+      - Linha 3: Regando Planta (water_crops)
+      - Linha 4: Dormindo (sleep_sit)
+    Gera uma Sprite Sheet de 6 colunas x 8 linhas (288 x 576 px) com todas as 6 poses por linha!
+    """
+    from sprite_generator import ANIMATION_ROWS, extract_animation_frames
+
+    tw, th = IMPORT_CELL_W, IMPORT_CELL_H
+    action_frames_map = extract_action_rows_from_4x6(
+        actions_image_path,
+        target_cols=target_cols,
+        cell_size=(tw, th),
+    )
+
+    out_sheet = Image.new("RGBA", (tw * target_cols, th * IMPORT_ROWS), (0, 0, 0, 0))
+
+    for act_name, row_idx in ANIMATION_ROWS.items():
+        if act_name in action_frames_map:
+            frames = action_frames_map[act_name]
+        else:
+            # Extrair os quadros existentes da folha base na escala 2x (48x72) e expandir para target_cols
+            existing = extract_animation_frames(base_sheet, act_name, scale=2)
+            frames = [existing[i % len(existing)] for i in range(target_cols)]
+
+        for col_idx in range(target_cols):
+            frame = frames[col_idx]
+            out_sheet.paste(frame, (col_idx * tw, row_idx * th))
+
+    return out_sheet

@@ -1,0 +1,56 @@
+{
+  "id": "a75998f3",
+  "config": {
+    "name": "Spritesheet De Aventur",
+    "is_male": false,
+    "skin_index": 0,
+    "skin_color": "#F9AE89",
+    "hair_index": 0,
+    "hair_color": "#824C27",
+    "hair_style": "curto",
+    "eye_color": "#462C1B",
+    "accessory_index": -1,
+    "beard_style": "sem_barba",
+    "glasses_style": "nenhum",
+    "shirt_index": 0,
+    "outfit_style": "jardineira",
+    "shirt_color": "#C43B3B",
+    "pants_index": 0,
+    "pants_color": "#3B659C",
+    "hat_style": "nenhum",
+    "scale": 4
+  },
+  "has_photo_portrait": true,
+  "has_dialog_portrait": true,
+  "is_freeform_sprite": true,
+  "format": "stardew-desktop-pet-v3-freeform-llm",
+  "cell_width": 24,
+  "cell_height": 36,
+  "columns": 4,
+  "rows": 8,
+  "personality": {
+    "archetype": "Criativo(a), Artístico(a) & Sonhador(a)",
+    "dominant_emotion": "🤓 Focado(a) & Curioso(a)",
+    "traits": [
+      "😏 Irônico(a) & Sarcástico(a) na medida",
+      "🤫 Observador(a) & Detalhista",
+      "🚀 Focado(a), Produtivo(a) & Determinado(a)"
+    ],
+    "likes": [
+      "☀️ Dias de Sol, Praia & Passeios",
+      "🎣 Pescaria & Beira do Rio",
+      "🎬 Filmes, Séries & Cultura Pop",
+      "💎 Cristais, Minerais & Mistérios do Vale"
+    ],
+    "dislikes": [
+      "⏰ Acordar Cedo na Segunda-feira",
+      "🔥 Calor Exagerado"
+    ],
+    "emotions": [
+      "💖 Fica super derretido(a) e feliz quando recebe elogios",
+      "🤩 Comemora com pulinhos cada projeto ou tarefa concluída",
+      "☕ Fica elétrico(a) e falante depois de tomar café"
+    ],
+    "catchphrase": "Aqui é Spritesheet De Aventur, trazendo meu jeito único para a sua área de trabalho!"
+  }
+}

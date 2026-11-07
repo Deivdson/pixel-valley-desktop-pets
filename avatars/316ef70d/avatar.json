@@ -27,5 +27,30 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Sarcástico(a), Espertinho(a) & Bem-Humorado(a)",
+    "dominant_emotion": "🥰 Carinhoso(a) & Afetuoso(a)",
+    "traits": [
+      "🥰 Carinhoso(a) & Acolhedor(a)",
+      "🎨 Criativo(a), Artístico(a) & Sonhador(a)",
+      "👑 Confiante & Cheio(a) de Atitude"
+    ],
+    "likes": [
+      "🌱 Plantas, Flores & Jardinagem",
+      "📚 Livros, Ciência & Pesquisa",
+      "☕ Café Expresso Quentinho",
+      "🌧️ Dias de Chuva & Frio Aconchegante"
+    ],
+    "dislikes": [
+      "🗂️ Área de Trabalho Bagunçada",
+      "⏰ Acordar Cedo na Segunda-feira"
+    ],
+    "emotions": [
+      "🔥 Defende seus gostos favoritos com paixão e bom humor",
+      "🥺 Cuida do usuário lembrando de beber água e descansar a vista",
+      "☕ Fica elétrico(a) e falante depois de tomar café"
+    ],
+    "catchphrase": "Aqui é Avatar Gemini qpjz, trazendo meu jeito único para a sua área de trabalho!"
+  }
 }

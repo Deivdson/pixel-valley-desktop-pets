@@ -40,6 +40,21 @@ ANIMATION_LABELS: Dict[str, str] = {
     "fishing": "Pescando",
     "happy_dance": "Comemorando / Feliz",
     "sleep_sit": "Sentado / Cochilando",
+    "social_coffee_toast": "🤝☕ Brinde de Café (Encontro)",
+    "social_high_five": "🤝🙌 High-Five & Pulinho (Encontro)",
+    "social_chat_laugh": "🤝💬 Papo & Risadas (Encontro)",
+    "social_gift_exchange": "🤝🎁 Troca de Presente (Encontro)",
+    "social_dance_party": "🤝💃 Dancinha Sincronizada (Encontro)",
+    "social_playful_tease": "🤝😤 Implicância Fofa & Pazes (Encontro)",
+}
+
+SOCIAL_INTERACTION_ACTIONS: Dict[str, str] = {
+    "social_coffee_toast": "☕ Brinde de Café Expresso",
+    "social_high_five": "🙌 High-Five & Pulinho da Amizade",
+    "social_chat_laugh": "💬 Papo Animado & Risadas",
+    "social_gift_exchange": "🎁 Troca de Presente do Vale",
+    "social_dance_party": "💃🎶 Dancinha Sincronizada",
+    "social_playful_tease": "😤😂 Implicância Fofa & Pazes",
 }
 
 
@@ -543,18 +558,257 @@ def generate_full_spritesheet(cfg: AvatarConfig) -> Image.Image:
     return sheet
 
 
-def extract_animation_frames(sheet: Image.Image, action: str, scale: int = 4) -> List[Image.Image]:
+def _put_block_2x(img: Image.Image, bx: int, by: int, color: Tuple[int, int, int, int], size: int = 2):
+    for dy in range(size):
+        for dx in range(size):
+            px, py = bx + dx, by + dy
+            if 0 <= px < img.width and 0 <= py < img.height:
+                img.putpixel((px, py), color)
+
+
+def _draw_social_pixel_Heart(img: Image.Image, ox: int, oy: int, main_c: Tuple[int, int, int, int]):
+    hi_c = (255, 225, 230, 255)
+    for hx, hy in [
+        (1, 0), (2, 0), (4, 0), (5, 0),
+        (0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1),
+        (1, 2), (2, 2), (3, 2), (4, 2), (5, 2),
+        (2, 3), (3, 3), (4, 3),
+        (3, 4),
+    ]:
+        _put_block_2x(img, ox + hx * 2, oy + hy * 2, main_c)
+    _put_block_2x(img, ox + 2, oy + 2, hi_c)
+
+
+def _draw_social_music_note(img: Image.Image, ox: int, oy: int, color: Tuple[int, int, int, int]):
+    # Nota musical ♪ em pixel art 2x2
+    for dx, dy in [(2, 0), (3, 0), (2, 1), (2, 2), (2, 3), (0, 3), (1, 3), (0, 4), (1, 4)]:
+        _put_block_2x(img, ox + dx * 2, oy + dy * 2, color)
+
+
+def _draw_social_sparkle(img: Image.Image, ox: int, oy: int, gold_c: Tuple[int, int, int, int] = (255, 220, 55, 255)):
+    white_c = (255, 255, 245, 255)
+    for dx, dy in [(0, -2), (0, 2), (-2, 0), (2, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)]:
+        _put_block_2x(img, ox + dx * 2, oy + dy * 2, gold_c)
+    _put_block_2x(img, ox, oy, white_c)
+
+
+def extract_social_interaction_frames(
+    sheet: Image.Image,
+    social_action: str,
+    facing: str = "right",
+    scale: int = 4,
+) -> List[Image.Image]:
     """
-    Extrai os 4 quadros de uma animação específica da Sprite Sheet (suporta tanto
-    células padrão 24x36 quanto folhas de alta densidade 48x72 importadas de IA 4x6).
+    Constrói 6 quadros animados sincronizados para encontros e interações sociais
+    entre dois avatares na área de trabalho (`facing='right'` para o avatar da esquerda
+    olhando para a direita; `facing='left'` para o avatar da direita olhando para a esquerda).
     """
-    row_idx = ANIMATION_ROWS.get(action, 0)
-    cell_w = max(1, sheet.width // COLS)
-    cell_h = max(1, sheet.height // ROWS)
+    tw, th = CELL_W * 2, CELL_H * 2  # 48x72 resolução base
+    idle_2x = _extract_raw_row_frames(sheet, ANIMATION_ROWS["idle"], tw, th)
+    right_2x = _extract_raw_row_frames(sheet, ANIMATION_ROWS["walk_right"], tw, th)
+    left_2x = _extract_raw_row_frames(sheet, ANIMATION_ROWS["walk_left"], tw, th)
+    coffee_2x = _extract_raw_row_frames(sheet, ANIMATION_ROWS["coffee_break"], tw, th)
+    dance_2x = _extract_raw_row_frames(sheet, ANIMATION_ROWS["happy_dance"], tw, th)
+
+    dir_frames = right_2x if facing == "right" else left_2x
+    sign = 1 if facing == "right" else -1
+    side_x = 34 if facing == "right" else 6
+
     target_w = CELL_W * scale
     target_h = CELL_H * scale
+    out_frames: List[Image.Image] = []
+
+    for f_idx in range(6):
+        canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+        dx = 0
+        dy = 0
+        base_spr = dir_frames[0]
+
+        if social_action == "social_coffee_toast":
+            # Brinde de Café Expresso: olham-se, aproximam canecas, brindam com brilho e pulam felizes
+            if f_idx == 0:
+                base_spr = dir_frames[0]
+            elif f_idx == 1:
+                base_spr = dir_frames[min(1, len(dir_frames) - 1)]
+                dx = 3 * sign
+            elif f_idx == 2:
+                base_spr = dir_frames[0]
+                dx = 4 * sign
+                dy = -2
+            elif f_idx == 3:
+                base_spr = coffee_2x[min(1, len(coffee_2x) - 1)]
+                dx = 2 * sign
+            elif f_idx == 4:
+                base_spr = dance_2x[min(1, len(dance_2x) - 1)]
+                dy = -3
+            else:
+                base_spr = idle_2x[0]
+
+            canvas.paste(base_spr, (dx, dy), base_spr)
+            # Desenhar caneca de café voltada para o amigo
+            cup_x = (34 if facing == "right" else 8) + (2 * sign if f_idx in (1, 2) else 0)
+            cup_y = 32 if f_idx in (1, 2, 3) else 38
+            for cdx in range(0, 6, 2):
+                for cdy in range(0, 6, 2):
+                    _put_block_2x(canvas, cup_x + cdx, cup_y + cdy, (248, 240, 225, 255))
+            _put_block_2x(canvas, cup_x + 2, cup_y, (95, 50, 25, 255))
+            # Vapor e faísca de brinde no quadro 2
+            _put_block_2x(canvas, cup_x + 2, cup_y - 4 - (f_idx % 2) * 2, (255, 255, 255, 215))
+            if f_idx == 2:
+                _draw_social_sparkle(canvas, 40 if facing == "right" else 6, 24)
+            elif f_idx == 4:
+                _draw_social_pixel_Heart(canvas, 17, 2, (235, 50, 70, 255))
+
+        elif social_action == "social_high_five":
+            # High-Five & Pulinho da Amizade
+            if f_idx == 0:
+                base_spr = dir_frames[0]
+                dy = 1
+            elif f_idx == 1:
+                base_spr = dir_frames[min(1, len(dir_frames) - 1)]
+                dx = 3 * sign
+                dy = -3
+            elif f_idx == 2:
+                base_spr = dir_frames[min(2, len(dir_frames) - 1)]
+                dx = 4 * sign
+                dy = -5
+            elif f_idx == 3:
+                base_spr = dance_2x[min(1, len(dance_2x) - 1)]
+                dx = 2 * sign
+                dy = -1
+            elif f_idx == 4:
+                base_spr = dance_2x[min(3, len(dance_2x) - 1)]
+                dy = -4
+            else:
+                base_spr = dir_frames[0]
+
+            canvas.paste(base_spr, (dx, dy), base_spr)
+            if f_idx in (1, 2):
+                _draw_social_sparkle(canvas, 39 if facing == "right" else 7, 26 if f_idx == 1 else 22)
+            elif f_idx in (3, 4):
+                _draw_social_pixel_Heart(canvas, 17, 2 if f_idx == 3 else 0, (255, 185, 45, 255))
+
+        elif social_action == "social_chat_laugh":
+            # Conversa animada alternada: esquerda fala (0,1), direita responde (2,3), ambos riem (4,5)
+            is_speaking = (facing == "right" and f_idx in (0, 1)) or (facing == "left" and f_idx in (2, 3))
+            if f_idx in (4, 5):
+                base_spr = dance_2x[f_idx % len(dance_2x)]
+                dy = -3 if f_idx == 4 else 0
+            elif is_speaking:
+                base_spr = dir_frames[f_idx % len(dir_frames)]
+                dx = 2 * sign
+                dy = -2 if (f_idx % 2 == 1) else 0
+            else:
+                base_spr = dir_frames[0]
+                dy = 1 if (f_idx % 2 == 1) else 0
+
+            canvas.paste(base_spr, (dx, dy), base_spr)
+            if is_speaking:
+                # Mini balãozinho de conversa pixel art ao lado da cabeça
+                bx = 32 if facing == "right" else 4
+                by = 8 - (f_idx % 2) * 2
+                for bdx in range(0, 12, 2):
+                    for bdy in range(0, 8, 2):
+                        _put_block_2x(canvas, bx + bdx, by + bdy, (252, 244, 220, 255))
+                _put_block_2x(canvas, bx + 2, by + 2, (90, 45, 20, 255))
+                _put_block_2x(canvas, bx + 6, by + 2, (215, 110, 35, 255))
+                if f_idx % 2 == 1:
+                    _put_block_2x(canvas, bx + 8, by + 4, (90, 45, 20, 255))
+            elif f_idx in (4, 5):
+                _draw_social_music_note(canvas, side_x, 6 - (f_idx % 2) * 2, (255, 205, 55, 255))
+                _draw_social_pixel_Heart(canvas, 17, 2, (235, 50, 70, 255))
+
+        elif social_action == "social_gift_exchange":
+            # Troca de presente / Flor Dourada do Vale
+            if f_idx in (0, 1):
+                base_spr = dir_frames[f_idx % len(dir_frames)]
+                dx = (2 if f_idx == 0 else 4) * sign if facing == "right" else 0
+            elif f_idx in (2, 3):
+                base_spr = dir_frames[0]
+                dx = 2 * sign
+                dy = -2 if f_idx == 2 else 0
+            else:
+                base_spr = dance_2x[f_idx % len(dance_2x)]
+                dy = -3 if f_idx == 4 else 0
+
+            canvas.paste(base_spr, (dx, dy), base_spr)
+            gx = (34 if facing == "right" else 8)
+            gy = 36 - (2 if f_idx in (1, 2) else 0)
+            if facing == "right" and f_idx in (0, 1, 2):
+                # Caixinha de presente vermelha com laço dourado
+                for pdx in range(0, 8, 2):
+                    for pdy in range(0, 8, 2):
+                        c_gift = (255, 215, 55, 255) if (pdx == 2 or pdy == 2) else (220, 45, 65, 255)
+                        _put_block_2x(canvas, gx + pdx, gy + pdy, c_gift)
+            elif facing == "left" and f_idx in (1, 2):
+                # Exclamação dourada de surpresa !
+                _put_block_2x(canvas, 22, 2, (255, 220, 40, 255))
+                _put_block_2x(canvas, 22, 4, (255, 220, 40, 255))
+                _put_block_2x(canvas, 22, 8, (255, 220, 40, 255))
+            if f_idx >= 3:
+                _draw_social_pixel_Heart(canvas, 17, 2 - (f_idx % 2), (235, 50, 70, 255))
+                _draw_social_sparkle(canvas, gx, 28)
+
+        elif social_action == "social_dance_party":
+            # Coreografia sincronizada de dança em dupla
+            dance_dx = [-3, 0, 3, 2 * sign, 0, -2 * sign][f_idx]
+            dance_dy = [-2, 0, -2, -4, -5, 0][f_idx]
+            if f_idx in (0, 2):
+                base_spr = dir_frames[min(1, len(dir_frames) - 1)]
+            elif f_idx in (3, 4):
+                base_spr = dance_2x[min(1, len(dance_2x) - 1)]
+            else:
+                base_spr = idle_2x[f_idx % len(idle_2x)]
+
+            canvas.paste(base_spr, (dance_dx, dance_dy), base_spr)
+            note_color = (95, 215, 255, 255) if f_idx % 2 == 0 else (255, 210, 60, 255)
+            _draw_social_music_note(canvas, 34 if f_idx % 2 == 0 else 6, 6 - (f_idx % 3) * 2, note_color)
+            if f_idx in (3, 4, 5):
+                _draw_social_pixel_Heart(canvas, 17, 1, (245, 75, 120, 255))
+
+        else:  # social_playful_tease
+            # Implicância Fofa seguida de Pazes
+            if f_idx in (0, 1):
+                base_spr = dir_frames[f_idx % len(dir_frames)]
+                if facing == "right":
+                    dy = -3 if f_idx == 1 else 0
+                    dx = 2
+                else:
+                    dy = -1 if f_idx == 0 else 0
+            elif f_idx in (2, 3):
+                base_spr = dir_frames[0]
+                dx = 3 * sign
+                dy = -2 if f_idx == 2 else 0
+            else:
+                base_spr = dance_2x[min(1, len(dance_2x) - 1)]
+                dy = -3 if f_idx == 4 else 0
+
+            canvas.paste(base_spr, (dx, dy), base_spr)
+            if f_idx in (0, 1) and facing == "right":
+                # Símbolo cômico de bravinho fofo 💢 no topo
+                for ex_d, ey_d in [(0, 0), (2, 0), (0, 2), (2, 2), (1, 1)]:
+                    _put_block_2x(canvas, 32 + ex_d * 2, 6 + ey_d * 2, (235, 55, 45, 255))
+            elif f_idx in (0, 1) and facing == "left":
+                _draw_social_music_note(canvas, 8, 6, (255, 210, 65, 255))
+            elif f_idx in (2, 3):
+                _draw_social_sparkle(canvas, side_x, 26)
+            else:
+                _draw_social_pixel_Heart(canvas, 17, 2, (255, 200, 50, 255))
+
+        if (canvas.width, canvas.height) != (target_w, target_h):
+            canvas = canvas.resize((target_w, target_h), Image.Resampling.NEAREST)
+        out_frames.append(canvas)
+
+    return out_frames
+
+
+def _extract_raw_row_frames(sheet: Image.Image, row_idx: int, target_w: int, target_h: int) -> List[Image.Image]:
+    cell_h = max(1, sheet.height // ROWS)
+    ratio_6 = (sheet.width / 6.0) / float(cell_h)
+    num_cols = 6 if abs(ratio_6 - (CELL_W / float(CELL_H))) < 0.08 else COLS
+    cell_w = max(1, sheet.width // num_cols)
     frames = []
-    for col_idx in range(COLS):
+    for col_idx in range(num_cols):
         x1 = col_idx * cell_w
         y1 = row_idx * cell_h
         cell = sheet.crop((x1, y1, x1 + cell_w, y1 + cell_h))
@@ -562,6 +816,20 @@ def extract_animation_frames(sheet: Image.Image, action: str, scale: int = 4) ->
             cell = cell.resize((target_w, target_h), Image.Resampling.NEAREST)
         frames.append(cell)
     return frames
+
+
+def extract_animation_frames(sheet: Image.Image, action: str, scale: int = 4) -> List[Image.Image]:
+    """
+    Extrai os quadros (4 ou 6 colunas) de uma animação específica da Sprite Sheet
+    (suporta células padrão 24x36, folhas 48x72 com 4 ou 6 quadros por linha e
+    animações de interação social entre avatares).
+    """
+    if action in SOCIAL_INTERACTION_ACTIONS:
+        return extract_social_interaction_frames(sheet, action, facing="right", scale=scale)
+    row_idx = ANIMATION_ROWS.get(action, 0)
+    target_w = CELL_W * scale
+    target_h = CELL_H * scale
+    return _extract_raw_row_frames(sheet, row_idx, target_w, target_h)
 
 
 def generate_modular_portrait(cfg: AvatarConfig) -> Image.Image:

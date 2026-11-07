@@ -27,5 +27,30 @@
   "cell_width": 24,
   "cell_height": 36,
   "columns": 4,
-  "rows": 8
+  "rows": 8,
+  "personality": {
+    "archetype": "Doce, Acolhedor(a) & Carismático(a)",
+    "dominant_emotion": "😴 Preguiçoso(a) & Fã de Soneca",
+    "traits": [
+      "🥰 Carinhoso(a) & Acolhedor(a)",
+      "✨ Carismático(a) & Comunicativo(a)",
+      "😂 Bem-humorado(a) & Piadista"
+    ],
+    "likes": [
+      "🌧️ Dias de Chuva & Frio Aconchegante",
+      "🍕 Pizza & Lanches com Amigos",
+      "🌱 Plantas, Flores & Jardinagem",
+      "🐾 Bichinhos Fofos & Natureza"
+    ],
+    "dislikes": [
+      "🔥 Calor Exagerado",
+      "🗂️ Área de Trabalho Bagunçada"
+    ],
+    "emotions": [
+      "😴 Boceja e pede uma pausa quando passa muito tempo trabalhando",
+      "🎶 Cantarola e espalha alto-astral pela barra de tarefas",
+      "💖 Fica super derretido(a) e feliz quando recebe elogios"
+    ],
+    "catchphrase": "Aqui é Avatar Gemini g4u7, trazendo meu jeito único para a sua área de trabalho!"
+  }
 }
